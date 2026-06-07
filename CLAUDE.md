@@ -74,6 +74,10 @@ copy app\build\outputs\apk\release\app-release.apk C:\Users\21198\Desktop\app-re
 - 管理员开箱无冷却
 - 管理员1人高级宝箱
 - 每5分钟宝箱补充
+- 爆率调整: 管理员后台可调两种宝箱各稀有度爆率，DropConfig模型持久化
+- 教程弹窗（仅验证码登录后）
+- 管理员1人高级宝箱
+- 每5分钟宝箱补充
 - 教程弹窗（仅验证码登录后）
 
 ## 每次更新：三端部署 + GitHub
