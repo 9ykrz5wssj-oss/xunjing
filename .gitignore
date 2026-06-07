@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.expo/
+android/app/build/
+android/build/
+android/.gradle/
+*.apk
+uploads/
+.env
+*.log
+.DS_Store
+Thumbs.db

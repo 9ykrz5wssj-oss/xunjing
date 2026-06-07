@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Test-Path \"C:\\\\Program Files\\\\nodejs\\\\npm.exe\"; Test-Path \"C:\\\\Program Files \\(x86\\)\\\\nodejs\\\\npm.exe\"; Get-ChildItem \"C:\\\\Program Files\\\\nodejs\\\\\" -ErrorAction SilentlyContinue; dir \"$env:APPDATA\\\\npm\\\\\" -ErrorAction SilentlyContinue)",
+      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); cd \"c:\\\\Users\\\\21198\\\\Desktop\\\\初稿\\\\client\"; npx expo start 2>&1)",
+      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); $env:EAS_NO_VCS = \"1\"; cd \"c:\\\\Users\\\\21198\\\\Desktop\\\\初稿\\\\client\"; npx eas build -p android --profile preview 2>&1)"
+    ]
+  }
+}

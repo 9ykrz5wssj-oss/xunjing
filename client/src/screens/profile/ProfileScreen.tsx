@@ -1,0 +1,450 @@
+﻿import React, { useState, useEffect, useCallback } from "react";
+import {
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  Alert, ActivityIndicator, RefreshControl, Modal, TextInput,
+} from "react-native";
+import { colors, typography, spacing, borderRadius } from "../../theme";
+import { Avatar } from "../../components/Avatar";
+import { ConfirmModal } from "../../components/ConfirmModal";
+import { EditNicknameModal } from "../../components/EditNicknameModal";
+import { useAuthStore } from "../../store/authStore";
+import { getStats, updateProfile } from "../../services/user.api";
+import { setPassword } from "../../services/auth.api";
+
+export function ProfileScreen({ navigation }: any) {
+  const { user, setUser, logout } = useAuthStore();
+  const [stats, setStats] = useState(user?.stats || { totalCollections: 0, hostedEvents: 0, participatedEvents: 0 });
+  const [refreshing, setRefreshing] = useState(false);
+  const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
+  const [savingNickname, setSavingNickname] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await getStats();
+      if (res.success && res.data) setStats(res.data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchStats();
+    setRefreshing(false);
+  };
+
+  const handleSaveNickname = async (nickname: string) => {
+    setSavingNickname(true);
+    try {
+      const res = await updateProfile({ nickname });
+      if (res.success && res.data) {
+        setUser(res.data);
+        setNicknameModalVisible(false);
+      }
+    } catch (err: any) {
+      Alert.alert("保存失败", err?.error || "请稍后再试");
+    } finally {
+      setSavingNickname(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setLogoutModalVisible(true);
+  };
+
+  const handleDeleteAccount = () => {
+    setDeleteModalVisible(true);
+  };
+
+  const confirmLogout = () => {
+    setLogoutModalVisible(false);
+    logout();
+  };
+
+  const confirmDeleteAccount = async () => {
+    setDeleteModalVisible(false);
+    try {
+      await import("../../services/user.api").then((m) => m.deleteAccount());
+      Alert.alert("已注销", "你的账号及所有数据已被清空");
+      logout();
+    } catch (err: any) {
+      Alert.alert("注销失败", err?.error || "请稍后再试");
+    }
+  };
+
+  const handleSavePassword = async () => {
+    if (!newPassword || newPassword.length < 6) { Alert.alert("提示", "密码至少6位"); return; }
+    setSavingPassword(true);
+    try {
+      await setPassword(newPassword);
+      setPasswordModalVisible(false);
+      Alert.alert("✅", "密码设置成功！下次可使用密码登录");
+    } catch (e: any) { Alert.alert("失败", e?.error || "设置失败"); }
+    finally { setSavingPassword(false); }
+  };
+
+  const isAdmin = user?.role === "admin";
+
+  return (
+    <View style={styles.container}>
+      {/* ── 顶部渐变装饰 ── */}
+      <View style={styles.topDecoration}>
+        <View style={styles.topCircle1} />
+        <View style={styles.topCircle2} />
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
+      >
+        {/* ── 头像区 ── */}
+        <View style={styles.avatarSection}>
+          <Avatar
+            uri={user?.avatar || undefined}
+            size={96}
+            emoji={user?.nickname ? user.nickname.charAt(0) : "👤"}
+            borderColor={isAdmin ? colors.rarity.典藏 : colors.primary}
+          />
+          <Text style={styles.nickname}>{user?.nickname || "新用户"}</Text>
+          <TouchableOpacity onPress={() => setNicknameModalVisible(true)} style={styles.editNicknameBtn}>
+            <Text style={styles.editNicknameText}>✏️ 修改昵称</Text>
+          </TouchableOpacity>
+          <View style={styles.idBadge}>
+            <Text style={styles.idText}>ID: {user?.userId || "---"}</Text>
+          </View>
+          <Text style={styles.email}>{user?.email || ""}</Text>
+          {isAdmin && (
+            <View style={styles.adminBadge}>
+              <Text style={styles.adminBadgeText}>👑 管理员</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── 统计卡片 ── */}
+        <View style={styles.statsCard}>
+          <Text style={styles.statsTitle}>📊 我的数据</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statEmoji}>🎁</Text>
+              <Text style={styles.statNumber}>{stats.totalCollections}</Text>
+              <Text style={styles.statLabel}>收藏品</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statEmoji}>📝</Text>
+              <Text style={styles.statNumber}>{stats.hostedEvents}</Text>
+              <Text style={styles.statLabel}>发布招募</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statEmoji}>🤝</Text>
+              <Text style={styles.statNumber}>{stats.participatedEvents}</Text>
+              <Text style={styles.statLabel}>参与招募</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── 管理员入口 ── */}
+        {isAdmin && (
+          <TouchableOpacity style={styles.adminEntry} activeOpacity={0.7} onPress={() => navigation.navigate("AdminPanel")}>
+            <Text style={styles.adminEntryEmoji}>⚙️</Text>
+            <Text style={styles.adminEntryText}>管理后台</Text>
+            <Text style={styles.adminEntryArrow}>›</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ── 设置密码 ── */}
+        <TouchableOpacity
+          style={styles.setPasswordBtn}
+          onPress={() => { setNewPassword(""); setPasswordModalVisible(true); }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.setPasswordText}>🔐 设置登录密码</Text>
+        </TouchableOpacity>
+
+        {/* ── 底部操作 ── */}
+        <View style={styles.actionsSection}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
+            <Text style={styles.logoutText}>🚪 退出登录</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount} activeOpacity={0.7}>
+            <Text style={styles.deleteText}>⚠️ 注销账号</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.version}>寻鲸 v1.0</Text>
+      </ScrollView>
+
+      {/* ── Modals ── */}
+      <EditNicknameModal
+        visible={nicknameModalVisible}
+        currentNickname={user?.nickname || ""}
+        onSave={handleSaveNickname}
+        onCancel={() => setNicknameModalVisible(false)}
+        loading={savingNickname}
+      />
+      <ConfirmModal
+        visible={logoutModalVisible}
+        title="退出登录"
+        message="确定要退出登录吗？"
+        confirmText="退出"
+        onConfirm={confirmLogout}
+        onCancel={() => setLogoutModalVisible(false)}
+      />
+      <ConfirmModal
+        visible={deleteModalVisible}
+        title="注销账号"
+        message="确定要注销账号吗？此操作不可恢复，所有藏品和数据将被清空！"
+        confirmText="确认注销"
+        confirmColor={colors.error}
+        onConfirm={confirmDeleteAccount}
+        onCancel={() => setDeleteModalVisible(false)}
+      />
+
+      {/* 设置密码弹窗 */}
+      <Modal visible={passwordModalVisible} transparent animationType="fade" onRequestClose={() => setPasswordModalVisible(false)}>
+        <View style={pmStyles.overlay}>
+          <View style={pmStyles.card}>
+            <Text style={pmStyles.emoji}>🔐</Text>
+            <Text style={pmStyles.title}>设置登录密码</Text>
+            <Text style={pmStyles.sub}>设置后可使用邮箱+密码直接登录</Text>
+            <TextInput
+              style={pmStyles.input}
+              placeholder="输入密码（至少6位）"
+              placeholderTextColor={colors.textHint}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoFocus
+            />
+            <View style={pmStyles.btns}>
+              <TouchableOpacity style={pmStyles.cancel} onPress={() => setPasswordModalVisible(false)}><Text style={pmStyles.cancelText}>取消</Text></TouchableOpacity>
+              <TouchableOpacity style={pmStyles.save} onPress={handleSavePassword} disabled={savingPassword}><Text style={pmStyles.saveText}>{savingPassword ? "保存中..." : "保存"}</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  topDecoration: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+    overflow: "hidden",
+  },
+  topCircle1: {
+    position: "absolute",
+    top: -80,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: colors.primaryLight + "30",
+  },
+  topCircle2: {
+    position: "absolute",
+    top: -40,
+    left: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: colors.secondary + "30",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 80,
+    paddingBottom: 120,
+    paddingHorizontal: spacing.xxl,
+    alignItems: "center",
+  },
+  avatarSection: {
+    alignItems: "center",
+    marginBottom: spacing.xxl,
+  },
+  nickname: {
+    ...typography.h1,
+    color: colors.textPrimary,
+    marginTop: spacing.md,
+  },
+  editNicknameBtn: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  editNicknameText: {
+    ...typography.caption,
+    color: colors.primary,
+  },
+  idBadge: {
+    marginTop: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  idText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  email: {
+    ...typography.caption,
+    color: colors.textHint,
+    marginTop: spacing.xs,
+  },
+  adminBadge: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.rarity.典藏 + "20",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.full,
+  },
+  adminBadgeText: {
+    ...typography.caption,
+    color: colors.rarity.典藏,
+    fontWeight: "700",
+  },
+  statsCard: {
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xxl,
+    marginBottom: spacing.lg,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statsTitle: {
+    ...typography.bodyBold,
+    color: colors.textPrimary,
+    marginBottom: spacing.xl,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statEmoji: {
+    fontSize: 28,
+    marginBottom: spacing.xs,
+  },
+  statNumber: {
+    ...typography.h1,
+    color: colors.primary,
+    fontSize: 26,
+  },
+  statLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  statDivider: {
+    width: 1,
+    height: 50,
+    backgroundColor: colors.divider,
+  },
+  adminEntry: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  adminEntryEmoji: {
+    fontSize: 22,
+    marginRight: spacing.md,
+  },
+  adminEntryText: {
+    ...typography.bodyBold,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  adminEntryArrow: {
+    ...typography.h2,
+    color: colors.textHint,
+  },
+  setPasswordBtn: { width: "100%", backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center", marginTop: spacing.lg, borderWidth: 1.5, borderColor: colors.secondary + "50" },
+  setPasswordText: { ...typography.bodyBold, color: colors.textPrimary },
+  actionsSection: {
+    width: "100%",
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+  },
+  logoutButton: {
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  logoutText: {
+    ...typography.bodyBold,
+    color: colors.textSecondary,
+  },
+  deleteButton: {
+    width: "100%",
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+  },
+  deleteText: {
+    ...typography.body,
+    color: colors.error,
+  },
+  version: {
+    ...typography.small,
+    color: colors.textHint,
+    marginTop: spacing.xxxl,
+    textAlign: "center",
+  },
+});
+
+const pmStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: spacing.xxxl },
+  card: { backgroundColor: colors.surface, borderRadius: borderRadius.xl, padding: spacing.xxl, width: "100%", maxWidth: 320, alignItems: "center" },
+  emoji: { fontSize: 40, marginBottom: spacing.md },
+  title: { ...typography.h3, color: colors.textPrimary, marginBottom: spacing.xs },
+  sub: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xl, textAlign: "center" },
+  input: { width: "100%", ...typography.body, backgroundColor: colors.background, borderRadius: borderRadius.md, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.md, color: colors.textPrimary, marginBottom: spacing.xl },
+  btns: { flexDirection: "row", gap: spacing.md, width: "100%" },
+  cancel: { flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: borderRadius.xl, paddingVertical: spacing.md, alignItems: "center" },
+  cancelText: { ...typography.button, color: colors.textSecondary },
+  save: { flex: 1, backgroundColor: colors.primary, borderRadius: borderRadius.xl, paddingVertical: spacing.md, alignItems: "center" },
+  saveText: { ...typography.button, color: colors.textOnPrimary },
+});

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+uploads/avatars/*
+uploads/items/*
+uploads/event-icons/*
+!uploads/avatars/.gitkeep
+!uploads/items/.gitkeep
+!uploads/event-icons/.gitkeep
+*.log
+.DS_Store
