@@ -76,6 +76,12 @@ copy app\build\outputs\apk\release\app-release.apk C:\Users\21198\Desktop\app-re
 - 每5分钟宝箱补充
 - 教程弹窗（仅验证码登录后）
 
+## 每次更新：三端部署 + GitHub
+1. 服务端 scp + pm2 restart
+2. Web: 移除.native.tsx → expo export → scp → 恢复.native
+3. APK: campus-app同步 → gradlew assembleRelease → adb install → 桌面APK
+4. GitHub: git add -A && git commit && git push
+
 ## 踩过的坑（关键）
 1. .native.tsx优先级最高，Web构建必移除
 2. 不改导航框架
