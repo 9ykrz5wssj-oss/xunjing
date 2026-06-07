@@ -175,3 +175,24 @@ export async function refreshAllChests(req: AuthRequest, res: Response): Promise
     res.json({ success: true, message: `已清空并重新生成，当前 ${newCount} 个活跃宝箱` });
   } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
 }
+
+export async function getDropConfig(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { DropConfig } = await import("../models/DropConfig");
+    const configs = await DropConfig.find();
+    const data: any = {};
+    configs.forEach((c: any) => { data[c.chestType] = c.weights; });
+    res.json({ success: true, data });
+  } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
+}
+
+export async function updateDropConfig(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { chestType, weights } = req.body;
+    if (!chestType || !weights) { res.status(400).json({ success: false, error: "缺少参数" }); return; }
+    const { DropConfig } = await import("../models/DropConfig");
+    await DropConfig.findOneAndUpdate({ chestType }, { chestType, weights }, { upsert: true, new: true });
+    logger.info("[管理员] 更新爆率配置: " + chestType);
+    res.json({ success: true, message: "爆率配置已更新" });
+  } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
+}

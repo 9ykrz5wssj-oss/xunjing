@@ -1,19 +1,21 @@
 import { Rarity, NORMAL_CHEST_DROP_WEIGHTS, ADVANCED_CHEST_DROP_WEIGHTS, ChestType, RARITY_ORDER } from "../config/constants";
 import { Item, IItem } from "../models/Item";
+import { DropConfig } from "../models/DropConfig";
 import { weightedRandom } from "../utils/randomGen";
 
-/**
- * 根据宝箱类型，按权重随机选择一个稀有度
- */
-function rollRarity(chestType: ChestType): Rarity {
-  const weights =
-    chestType === ChestType.ADVANCED
-      ? ADVANCED_CHEST_DROP_WEIGHTS
-      : NORMAL_CHEST_DROP_WEIGHTS;
+async function getDropWeights(chestType: ChestType): Promise<Record<string, number>> {
+  const defaults = chestType === ChestType.ADVANCED ? ADVANCED_CHEST_DROP_WEIGHTS : NORMAL_CHEST_DROP_WEIGHTS;
+  try {
+    const cfg = await DropConfig.findOne({ chestType });
+    if (cfg?.weights) return { ...defaults, ...cfg.weights };
+  } catch {}
+  return defaults;
+}
 
+async function rollRarity(chestType: ChestType): Promise<Rarity> {
+  const weights = await getDropWeights(chestType);
   const rarities = RARITY_ORDER;
-  const weightsArr = rarities.map((r) => weights[r]);
-
+  const weightsArr = rarities.map((r) => weights[r] || 0);
   return weightedRandom(rarities, weightsArr);
 }
 

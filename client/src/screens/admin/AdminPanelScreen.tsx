@@ -30,6 +30,7 @@ export function AdminPanelScreen({ navigation }: any) {
   const [chestCreating, setChestCreating] = useState(false);
   const [activeChests, setActiveChests] = useState<any[]>([]);
   const [chestConfig, setChestConfig] = useState<any>({ gulou: { maxNormalChests: 3, advancedChance: 0.2 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2 } });
+  const [dropConfig, setDropConfig] = useState<any>({ normal: {}, advanced: {} });
   const [giftUserId, setGiftUserId] = useState("");
   const [giftItemId, setGiftItemId] = useState("");
   const [giftItemName, setGiftItemName] = useState("");
@@ -99,6 +100,10 @@ export function AdminPanelScreen({ navigation }: any) {
       try {
         const cfgRes = await api.get("/admin/chest-config");
         if (cfgRes && (cfgRes as any).success) setChestConfig((cfgRes as any).data);
+      } catch {}
+      try {
+        const dropRes = await api.get("/admin/drop-config");
+        if (dropRes && (dropRes as any).success) setDropConfig((dropRes as any).data || { normal: {}, advanced: {} });
       } catch {}
     } catch {} finally { setLoading(false); }
   }, []);
@@ -387,6 +392,42 @@ export function AdminPanelScreen({ navigation }: any) {
           >
             <Text style={styles.createChestBtnText}>🔄 一键刷新全部宝箱</Text>
           </TouchableOpacity>
+
+          {/* 爆率调整 */}
+          <View style={{ marginTop: spacing.xl, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg }}>
+            <Text style={styles.chestTitle}>🎲 爆率调整</Text>
+            {(["normal", "advanced"] as const).map((ct) => (
+              <View key={ct} style={styles.boundsCard}>
+                <Text style={styles.boundsTitle}>{ct === "normal" ? "📦 普通宝箱" : "💎 高级宝箱"}</Text>
+                {(["典藏","神秘","限定","高端","普通","常见"] as string[]).map((r) => {
+                  const val = dropConfig[ct]?.[r] ?? (ct === "normal" ? {典藏:4,神秘:1.5,限定:4,高端:12,普通:30,常见:48.5} : {典藏:20,神秘:10,限定:20,高端:50,普通:0,常见:0})[r];
+                  return (
+                    <View key={r} style={{ flexDirection: "row", alignItems: "center", marginBottom: 4, gap: spacing.sm }}>
+                      <Text style={{ width: 40, ...typography.small, color: RARITY_COLORS[r] || "#999", fontWeight: "700" }}>{r}</Text>
+                      <View style={{ flex: 1, height: 6, backgroundColor: colors.divider, borderRadius: 3, overflow: "hidden" }}>
+                        <View style={{ height: 6, width: Math.min(100, (val/50)*100) + "%", backgroundColor: RARITY_COLORS[r] || "#999", borderRadius: 3 }} />
+                      </View>
+                      <TouchableOpacity style={styles.stepperBtn} onPress={() => setDropConfig((prev:any) => ({ ...prev, [ct]: { ...prev[ct], [r]: Math.max(0, (prev[ct]?.[r] ?? val) - 0.5) } }))}>
+                        <Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                      <Text style={{ width: 36, textAlign: "center", ...typography.small, fontWeight: "700" }}>{val}</Text>
+                      <TouchableOpacity style={styles.stepperBtn} onPress={() => setDropConfig((prev:any) => ({ ...prev, [ct]: { ...prev[ct], [r]: Math.min(100, (prev[ct]?.[r] ?? val) + 0.5) } }))}>
+                        <Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+            <TouchableOpacity style={[styles.createChestBtn, { backgroundColor: colors.rarity.典藏, marginTop: spacing.sm }]} onPress={async () => {
+              try {
+                for (const ct of ["normal", "advanced"]) {
+                  await api.put("/admin/drop-config", { chestType: ct, weights: dropConfig[ct] || {} });
+                }
+                Alert.alert("✅", "爆率已保存，新生成的宝箱生效");
+              } catch (e: any) { Alert.alert("失败", e?.error || ""); }
+            }}>
+              <Text style={styles.createChestBtnText}>💾 保存爆率</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* 赠送藏品 */}
           <View style={{ marginTop: spacing.xxl, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xl }}>
