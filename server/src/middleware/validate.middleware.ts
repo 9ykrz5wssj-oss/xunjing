@@ -49,6 +49,7 @@ export const schemas = {
   }),
 
   createEvent: z.object({
+    title: z.string().optional(),
     typeId: z.string().min(1, "请选择活动类型"),
     startTime: z.string().min(1, "请选择开始时间"),
     endTime: z.string().min(1, "请选择结束时间"),
