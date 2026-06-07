@@ -112,6 +112,12 @@ export async function handleChestOpenRequest(
       // 满足条件：获取范围内所有用户的 userId
       const nearbyUserIds = await redis.smembers(nearbyKey);
 
+      // 验证请求者本人在范围内
+      if (!nearbyUserIds.includes(user.userId)) {
+        socket.emit("chest_open_result", { chestId, success: false, error: "你不在宝箱范围内" });
+        return;
+      }
+
       // 先标记宝箱已开启，防止重复触发
       chest.status = ChestStatus.OPENED;
       chest.openedBy = user.userId as any;
