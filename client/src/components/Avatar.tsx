@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity, ViewStyle } from "react-native";
 import { colors, borderRadius } from "../theme";
+import { fixImageUrl } from "../services/api";
 
 interface AvatarProps {
   uri?: string;
@@ -22,7 +23,7 @@ export function Avatar({ uri, size = 60, emoji = "👤", borderColor, onPress, s
       ]}
     >
       {uri ? (
-        <Image source={{ uri }} style={[styles.image, { width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 }]} />
+        <Image source={{ uri: fixImageUrl(uri) }} style={[styles.image, { width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 }]} />
       ) : (
         <Text style={[styles.emoji, { fontSize: size * 0.45 }]}>{emoji}</Text>
       )}
