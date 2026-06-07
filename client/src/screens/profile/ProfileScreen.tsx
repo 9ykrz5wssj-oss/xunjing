@@ -10,6 +10,8 @@ import { EditNicknameModal } from "../../components/EditNicknameModal";
 import { useAuthStore } from "../../store/authStore";
 import { getStats, updateProfile } from "../../services/user.api";
 import { setPassword } from "../../services/auth.api";
+import api, { fixImageUrl } from "../../services/api";
+import * as ImagePicker from "expo-image-picker";
 
 export function ProfileScreen({ navigation }: any) {
   const { user, setUser, logout } = useAuthStore();
@@ -33,6 +35,23 @@ export function ProfileScreen({ navigation }: any) {
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  const handleChangeAvatar = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert("提示", "需要相册权限"); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]) return;
+    try {
+      const form = new FormData();
+      const file: any = { uri: result.assets[0].uri, name: "avatar.jpg", type: "image/jpeg" };
+      form.append("avatar", file);
+      const res = await api.post("/upload/avatar", form, { headers: { "Content-Type": "multipart/form-data" } });
+      if (res && (res as any).success && user) {
+        setUser({ ...user, avatar: (res as any).data.url });
+        Alert.alert("✅", "头像已更新");
+      }
+    } catch (e: any) { Alert.alert("失败", e?.error || "上传失败"); }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -115,9 +134,14 @@ export function ProfileScreen({ navigation }: any) {
             borderColor={isAdmin ? colors.rarity.典藏 : colors.primary}
           />
           <Text style={styles.nickname}>{user?.nickname || "新用户"}</Text>
-          <TouchableOpacity onPress={() => setNicknameModalVisible(true)} style={styles.editNicknameBtn}>
-            <Text style={styles.editNicknameText}>✏️ 修改昵称</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+            <TouchableOpacity onPress={() => setNicknameModalVisible(true)} style={styles.editNicknameBtn}>
+              <Text style={styles.editNicknameText}>✏️ 昵称</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleChangeAvatar} style={styles.editNicknameBtn}>
+              <Text style={styles.editNicknameText}>📷 头像</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.idBadge}>
             <Text style={styles.idText}>ID: {user?.userId || "---"}</Text>
           </View>

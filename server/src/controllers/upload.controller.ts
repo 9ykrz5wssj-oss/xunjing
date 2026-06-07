@@ -44,3 +44,30 @@ export function uploadItemImage(req: AuthRequest, res: Response): void {
     res.json({ success: true, data: { url } });
   });
 }
+
+const avatarStorage = multer.diskStorage({
+  destination: path.join(UPLOAD_DIR, "avatars"),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".png";
+    cb(null, `${uuidv4()}${ext}`);
+  },
+});
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [".png", ".jpg", ".jpeg", ".webp"];
+    cb(null, allowed.includes(path.extname(file.originalname).toLowerCase()));
+  },
+}).single("avatar");
+
+export function uploadAvatar(req: AuthRequest, res: Response): void {
+  avatarUpload(req as any, res as any, async (err: any) => {
+    if (err) { res.status(400).json({ success: false, error: "上传失败" }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: "请选择图片" }); return; }
+    const url = `/uploads/avatars/${req.file.filename}`;
+    const { User } = await import("../models/User");
+    await User.findByIdAndUpdate(req.user!.userId, { avatar: url });
+    res.json({ success: true, data: { url } });
+  });
+}

@@ -64,26 +64,29 @@ export async function handleChestOpenRequest(
 
     // 3. 频率限制检查（管理员跳过冷却）
     const isAdmin = user.role === "admin";
+    const formatCD = (s: number) => s >= 3600 ? `${Math.floor(s/3600)}小时${Math.floor((s%3600)/60)}分钟` : `${Math.floor(s/60)}分钟${s%60}秒`;
     if (!isAdmin) {
       if (chest.type === ChestType.NORMAL) {
         const cooldownKey = `rate:chest_normal:${user.userId}`;
-        const inCooldown = await redis.exists(cooldownKey);
-        if (inCooldown) {
+        const remaining = await redis.ttl(cooldownKey);
+        if (remaining > 0) {
           socket.emit("chest_open_result", {
             chestId,
             success: false,
-            error: "冷却中，请一小时后再试",
+            error: `冷却中，请${formatCD(remaining)}后再试`,
+            cooldownRemaining: remaining,
           });
           return;
         }
       } else {
         const cooldownKey = `rate:chest_advanced:${user.userId}`;
-        const inCooldown = await redis.exists(cooldownKey);
-        if (inCooldown) {
+        const remaining = await redis.ttl(cooldownKey);
+        if (remaining > 0) {
           socket.emit("chest_open_result", {
             chestId,
             success: false,
-            error: "冷却中，请一天后再试",
+            error: `冷却中，请${formatCD(remaining)}后再试`,
+            cooldownRemaining: remaining,
           });
           return;
         }
@@ -124,19 +127,31 @@ export async function handleChestOpenRequest(
       chest.openedAt = new Date();
       await chest.save();
 
-      // 给每个范围内的用户独立掉落
+      // 给每个范围内的用户独立掉落（冷却中的跳过）
       for (const nuid of nearbyUserIds) {
         try {
+          // 检查冷却
+          const cdKey = `rate:chest_${chest.type}:${nuid}`;
+          const cdRemaining = await redis.ttl(cdKey);
+          if (cdRemaining > 0) {
+            const cdUser = await User.findById(nuid).select("userId");
+            if (cdUser) {
+              io.to(`user:${nuid}`).emit("chest_open_result", {
+                chestId,
+                success: false,
+                error: `你处于冷却中，请${formatCD(cdRemaining)}后再试`,
+                cooldownRemaining: cdRemaining,
+              });
+            }
+            continue;
+          }
+
           const drop = await rollDrop(chest.type);
           if (!drop) continue;
 
           await ChestOpenLog.create({
-            userId: nuid,
-            chestId: chest._id,
-            chestType: chest.type,
-            itemDroppedId: drop.item._id,
-            itemDroppedRarity: drop.rarity,
-            openedAt: new Date(),
+            userId: nuid, chestId: chest._id, chestType: chest.type,
+            itemDroppedId: drop.item._id, itemDroppedRarity: drop.rarity, openedAt: new Date(),
           });
 
           await UserCollection.findOneAndUpdate(
@@ -145,24 +160,20 @@ export async function handleChestOpenRequest(
             { upsert: true, new: true }
           );
 
-          // 查找该用户的 numericId 用于通知
-          const nearbyUser = await User.findById(nuid).select("userId");
+          const nearbyUser = await User.findById(nuid).select("userId role");
           if (nearbyUser) {
             await User.findByIdAndUpdate(nuid, { $inc: { "stats.totalCollections": 1 } });
             await createNotification({
-              userId: nuid,
-              type: NotificationType.NEW_COLLECTION,
-              referenceId: drop.item._id,
-              title: "获得新藏品！",
+              userId: nuid, type: NotificationType.NEW_COLLECTION,
+              referenceId: drop.item._id, title: "获得新藏品！",
               body: `获得了 ${drop.rarity} 藏品 "${drop.item.name}"`,
             });
-            if (!isAdmin) {
+            if (nearbyUser.role !== "admin") {
               const cs = chest.type === ChestType.NORMAL ? CHEST_CONFIG.NORMAL_CHEST_COOLDOWN_HOURS * 3600 : CHEST_CONFIG.ADVANCED_CHEST_COOLDOWN_HOURS * 3600;
               await redis.setex(`rate:chest_${chest.type}:${nuid}`, cs, "1");
             }
             io.to(`user:${nuid}`).emit("chest_open_result", {
-              chestId,
-              success: true,
+              chestId, success: true,
               item: { id: drop.item._id.toString(), name: drop.item.name, rarity: drop.rarity, imageUrl: drop.item.imageUrl },
             });
             logger.info(`[开箱-多人] 用户${nearbyUser.userId} 获得${drop.rarity}-${drop.item.name}`);

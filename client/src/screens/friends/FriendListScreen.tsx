@@ -79,7 +79,10 @@ export function FriendListScreen({ navigation }: any) {
     >
       <Avatar uri={item.avatar || undefined} size={52} emoji={item.nickname.charAt(0)} />
       <View style={styles.friendInfo}>
-        <Text style={styles.friendName}>{item.nickname}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={styles.friendName}>{item.nickname}</Text>
+          <Text style={{ fontSize: 10, color: colors.textHint }}>ID:{item.userId}</Text>
+        </View>
         <Text style={styles.friendLastMsg} numberOfLines={1}>
           {item.lastMessage || "暂无消息"}
         </Text>
