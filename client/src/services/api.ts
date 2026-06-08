@@ -15,18 +15,20 @@ export function fixImageUrl(url: string): string {
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 15000,
-  headers: { "Content-Type": "application/json" },
 });
 
-// 请求拦截器：自动注入Token
+// 请求拦截器：自动注入Token + 智能设Content-Type
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  // multipart/form-data由浏览器自动设boundary
-  const ct = String(config.headers?.["Content-Type"] || "");
-  if (ct.includes("multipart")) delete config.headers["Content-Type"];
+  // 只有普通对象才设JSON头，文件上传让浏览器自动设boundary
+  const isForm = config.data && typeof config.data === "object" && (config.data instanceof FormData || config.data._parts || config.data.append);
+  if (!config.headers["Content-Type"] && !isForm) {
+    config.headers["Content-Type"] = "application/json";
+  }
+  if (isForm) delete config.headers["Content-Type"];
   return config;
 });
 
