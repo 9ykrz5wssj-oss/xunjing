@@ -48,16 +48,29 @@ export function MapScreen() {
   }, []);
 
   useEffect(() => { if (!navigator?.geolocation) return; let first = true;
-    const id = navigator.geolocation.watchPosition((pos) => {
-      const { latitude: lat, longitude: lng } = pos.coords; setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`); setUserLocation({ lat, lng });
+    const updatePos = (lat: number, lng: number) => {
+      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`); setUserLocation({ lat, lng });
       if (mapRef.current && L) { if (userMarkerRef.current) mapRef.current.removeLayer(userMarkerRef.current);
         const icon = L.divIcon({ className: "", html: '<div style="width:22px;height:22px;background:#3498DB;border:4px solid #fff;border-radius:50%;box-shadow:0 0 20px rgba(52,152,219,0.8);"></div>', iconSize: [30,30], iconAnchor: [15,15] });
         userMarkerRef.current = L.marker([lat, lng], { icon, zIndexOffset: 9999 }).addTo(mapRef.current);
         if (first) { first = false; mapRef.current.setView([lat, lng], Math.max(mapRef.current.getZoom(), 16)); }
       }
       const s = getCurrentSocket(); if (s?.connected) s.emit("location_update", { lat, lng, campus });
-    }, () => setGpsLabel("⚠ GPS失败"), { enableHighAccuracy: true });
-    return () => navigator.geolocation?.clearWatch(id);
+    };
+    const id = navigator.geolocation.watchPosition(
+      (pos) => updatePos(pos.coords.latitude, pos.coords.longitude),
+      () => setGpsLabel("⚠ GPS失败"),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+    // 定时强刷：每10秒强制获取最新位置
+    const interval = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => updatePos(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+    }, 10000);
+    return () => { navigator.geolocation?.clearWatch(id); clearInterval(interval); };
   }, [campus]);
 
   const fetchAll = useCallback(async () => { try {

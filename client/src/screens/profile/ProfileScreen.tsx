@@ -43,7 +43,7 @@ export function ProfileScreen({ navigation }: any) {
         const file = e.target?.files?.[0]; if (!file) return;
         const form = new FormData(); form.append("avatar", file);
         try {
-          const res = await api.post("/upload/avatar", form, { headers: { "Content-Type": "multipart/form-data" } });
+          const res = await api.post("/upload/avatar", form);
           if (res && (res as any).success && user) { setUser({ ...user, avatar: (res as any).data.url }); Alert.alert("✅", "头像已更新"); }
         } catch (e: any) { Alert.alert("失败", e?.error || "上传失败"); }
       };
@@ -60,7 +60,7 @@ export function ProfileScreen({ navigation }: any) {
       const ext = uri.split(".").pop() || "jpg";
       const file: any = { uri, name: `avatar.${ext}`, type: `image/${ext === "png" ? "png" : "jpeg"}` };
       form.append("avatar", file);
-      const res = await api.post("/upload/avatar", form, { headers: { "Content-Type": "multipart/form-data" } });
+      const res = await api.post("/upload/avatar", form);
       if (res && (res as any).success && user) {
         setUser({ ...user, avatar: (res as any).data.url });
         Alert.alert("✅", "头像已更新");
@@ -212,6 +212,19 @@ export function ProfileScreen({ navigation }: any) {
 
         {/* ── 底部操作 ── */}
         <View style={styles.actionsSection}>
+          {Platform.OS === "web" && (
+            <TouchableOpacity style={styles.locationButton} onPress={() => {
+              if (navigator?.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                  () => Alert.alert("✅", "定位授权成功，请返回地图查看"),
+                  (err) => Alert.alert("定位失败", err.message),
+                  { enableHighAccuracy: true, timeout: 10000 }
+                );
+              } else { Alert.alert("提示", "浏览器不支持GPS定位"); }
+            }} activeOpacity={0.7}>
+              <Text style={styles.logoutText}>📍 位置授权</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
             <Text style={styles.logoutText}>🚪 退出登录</Text>
           </TouchableOpacity>
@@ -444,6 +457,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     gap: spacing.sm,
   },
+  locationButton: { backgroundColor: colors.info, borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center" },
   logoutButton: {
     width: "100%",
     backgroundColor: colors.surface,
