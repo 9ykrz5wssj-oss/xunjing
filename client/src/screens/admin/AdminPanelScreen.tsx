@@ -53,9 +53,7 @@ export function AdminPanelScreen({ navigation }: any) {
         const uri = result.assets[0].uri;
         const ext = uri.split(".").pop() || "jpg";
         formData.append("image", { uri, name: `item.${ext}`, type: `image/${ext}` } as any);
-        const res = await api.post("/upload/item-image", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        const res = await api.post("/upload/item-image", formData);
         if (res && (res as any).success) {
           setFormImageUrl((res as any).data.url);
           Alert.alert("✅", "图片上传成功");
