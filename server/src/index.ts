@@ -72,6 +72,15 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/upload", uploadRoutes);
 app.use("/api/v1/geo", geoRoutes);
 
+// ── 网页静态文件（挂到3000端口，供流量访问） ──
+const webDir = path.resolve(__dirname, "../webdist");
+app.use(express.static(webDir, { maxAge: "1h" }));
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/") || req.path.startsWith("/uploads/") || req.path.startsWith("/socket.io/")) return next();
+  if (req.method === "GET") res.sendFile(path.join(webDir, "index.html"));
+  else next();
+});
+
 // ── 全局错误处理 ──
 app.use(errorHandler);
 
