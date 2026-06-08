@@ -7,6 +7,7 @@ import { colors, typography, spacing, borderRadius } from "../../theme";
 import { Avatar } from "../../components/Avatar";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { EditNicknameModal } from "../../components/EditNicknameModal";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "../../store/authStore";
 import { getStats, updateProfile } from "../../services/user.api";
 import { setPassword } from "../../services/auth.api";
@@ -43,9 +44,12 @@ export function ProfileScreen({ navigation }: any) {
         const file = e.target?.files?.[0]; if (!file) return;
         const form = new FormData(); form.append("avatar", file);
         try {
-          const res = await api.post("/upload/avatar", form);
-          if (res && (res as any).success && user) { setUser({ ...user, avatar: (res as any).data.url }); Alert.alert("✅", "头像已更新"); }
-        } catch (e: any) { Alert.alert("失败", e?.error || "上传失败"); }
+          const token = await AsyncStorage.getItem("token");
+          const res = await fetch("https://seekwhale.cn/api/v1/upload/avatar", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+          const data = await res.json();
+          if (data.success && user) { setUser({ ...user, avatar: data.data.url }); Alert.alert("✅", "头像已更新"); }
+          else { Alert.alert("失败", data.error || "上传失败"); }
+        } catch (e: any) { Alert.alert("失败", "网络错误"); }
       };
       input.click();
       return;
