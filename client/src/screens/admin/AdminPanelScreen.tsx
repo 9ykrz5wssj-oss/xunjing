@@ -5,6 +5,7 @@ import {
   Image, Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { RarityBadge } from "../../components/RarityBadge";
 import { EmptyState } from "../../components/EmptyState";
@@ -48,9 +49,12 @@ export function AdminPanelScreen({ navigation }: any) {
         setUploading(true);
         try {
           const fd = new FormData(); fd.append("image", file);
-          const res = await api.post("/upload/item-image", fd);
-          if (res && (res as any).success) { setFormImageUrl((res as any).data.url); Alert.alert("✅", "图片上传成功"); }
-        } catch (e: any) { Alert.alert("上传失败", e?.error || "网络错误"); }
+          const token = await AsyncStorage.getItem("token");
+          const res = await fetch("https://seekwhale.cn/api/v1/upload/item-image", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+          const data = await res.json();
+          if (data.success) { setFormImageUrl(data.data.url); Alert.alert("✅", "图片上传成功"); }
+          else { Alert.alert("上传失败", data.error || "请稍后再试"); }
+        } catch (e: any) { Alert.alert("上传失败", "网络错误"); }
         finally { setUploading(false); }
       };
       input.click();
