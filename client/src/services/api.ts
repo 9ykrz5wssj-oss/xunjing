@@ -8,7 +8,7 @@ const BASE_URL = `${SERVER}/api/v1`;
 export function fixImageUrl(url: string): string {
   if (!url) return "";
   if (url.startsWith("http")) return url;
-  if (Platform.OS === "web") return `https://seekwhale.cn${url}`;
+  if (Platform.OS === "web") return `${url}`;
   return `${SERVER}${url}`;
 }
 
