@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
   TextInput, Alert, ActivityIndicator, Modal, ScrollView,
-  Image,
+  Image, Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { colors, typography, spacing, borderRadius } from "../../theme";
@@ -41,6 +41,21 @@ export function AdminPanelScreen({ navigation }: any) {
   const [uploading, setUploading] = useState(false);
 
   const pickImage = async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0]; if (!file) return;
+        setUploading(true);
+        try {
+          const fd = new FormData(); fd.append("image", file);
+          const res = await api.post("/upload/item-image", fd);
+          if (res && (res as any).success) { setFormImageUrl((res as any).data.url); Alert.alert("✅", "图片上传成功"); }
+        } catch (e: any) { Alert.alert("上传失败", e?.error || "网络错误"); }
+        finally { setUploading(false); }
+      };
+      input.click();
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert("提示", "需要相册权限"); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
