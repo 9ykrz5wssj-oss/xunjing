@@ -12,6 +12,12 @@ const CAMPUS_CENTERS: Record<Campus, { lng: number; lat: number; zoom: number }>
   xianlin: { lng: 118.9500, lat: 32.1170, zoom: 15 },
 };
 
+// WGS-84 → GCJ-02（浏览器GPS转高德坐标系）
+const PI = Math.PI, A = 6378245.0, EE = 0.00669342162296594323;
+const _tLat = (x: number, y: number): number => { let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3; r += (160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3; return r; };
+const _tLng = (x: number, y: number): number => { let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3; r += (150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3; return r; };
+const wgs84ToGcj02 = (lat: number, lng: number) => { const dLat = _tLat(lng-105, lat-35); const dLng = _tLng(lng-105, lat-35); const rad = lat/180*PI; let m = Math.sin(rad); m = 1-EE*m*m; const s = Math.sqrt(m); return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) }; };
+
 let L: any = null;
 const loadLeaflet = () => new Promise<any>((resolve) => {
   if (typeof window === "undefined") return resolve(null);
@@ -49,20 +55,20 @@ export function MapScreen() {
 
   useEffect(() => { if (!navigator?.geolocation) return; let first = true;
     const updatePos = (lat: number, lng: number) => {
-      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`); setUserLocation({ lat, lng });
+      const gcj = wgs84ToGcj02(lat, lng);
+      setGpsLabel(`📍 ${gcj.lat.toFixed(6)}, ${gcj.lng.toFixed(6)}`); setUserLocation(gcj);
       if (mapRef.current && L) { if (userMarkerRef.current) mapRef.current.removeLayer(userMarkerRef.current);
         const icon = L.divIcon({ className: "", html: '<div style="width:22px;height:22px;background:#3498DB;border:4px solid #fff;border-radius:50%;box-shadow:0 0 20px rgba(52,152,219,0.8);"></div>', iconSize: [30,30], iconAnchor: [15,15] });
-        userMarkerRef.current = L.marker([lat, lng], { icon, zIndexOffset: 9999 }).addTo(mapRef.current);
-        if (first) { first = false; mapRef.current.setView([lat, lng], Math.max(mapRef.current.getZoom(), 16)); }
+        userMarkerRef.current = L.marker([gcj.lat, gcj.lng], { icon, zIndexOffset: 9999 }).addTo(mapRef.current);
+        if (first) { first = false; mapRef.current.setView([gcj.lat, gcj.lng], Math.max(mapRef.current.getZoom(), 16)); }
       }
-      const s = getCurrentSocket(); if (s?.connected) s.emit("location_update", { lat, lng, campus });
+      const s = getCurrentSocket(); if (s?.connected) s.emit("location_update", { lat: gcj.lat, lng: gcj.lng, campus });
     };
     const id = navigator.geolocation.watchPosition(
       (pos) => updatePos(pos.coords.latitude, pos.coords.longitude),
       () => setGpsLabel("⚠ GPS失败"),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
-    // 定时强刷：每10秒强制获取最新位置
     const interval = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
         (pos) => updatePos(pos.coords.latitude, pos.coords.longitude),
