@@ -43,10 +43,10 @@ export async function rollDrop(chestType: ChestType): Promise<{
   item: IItem;
   rarity: Rarity;
 } | null> {
-  const rarity = await rollRarity(chestType);
-  const item = await pickItemByRarity(rarity);
+  const rolledRarity = await rollRarity(chestType);
+  const item = await pickItemByRarity(rolledRarity);
 
   if (!item) return null;
 
-  return { item, rarity };
+  return { item, rarity: item.rarity };
 }

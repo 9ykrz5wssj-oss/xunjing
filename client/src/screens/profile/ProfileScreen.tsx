@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Alert, ActivityIndicator, RefreshControl, Modal, TextInput,
+  Alert, ActivityIndicator, RefreshControl, Modal, TextInput, Platform,
 } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { Avatar } from "../../components/Avatar";
@@ -37,13 +37,28 @@ export function ProfileScreen({ navigation }: any) {
   }, [fetchStats]);
 
   const handleChangeAvatar = async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0]; if (!file) return;
+        const form = new FormData(); form.append("avatar", file);
+        try {
+          const res = await api.post("/upload/avatar", form, { headers: { "Content-Type": "multipart/form-data" } });
+          if (res && (res as any).success && user) { setUser({ ...user, avatar: (res as any).data.url }); Alert.alert("✅", "头像已更新"); }
+        } catch (e: any) { Alert.alert("失败", e?.error || "上传失败"); }
+      };
+      input.click();
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert("提示", "需要相册权限"); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, quality: 0.8 });
     if (result.canceled || !result.assets?.[0]) return;
     try {
       const form = new FormData();
-      const file: any = { uri: result.assets[0].uri, name: "avatar.jpg", type: "image/jpeg" };
+      const uri = result.assets[0].uri;
+      const ext = uri.split(".").pop() || "jpg";
+      const file: any = { uri, name: `avatar.${ext}`, type: `image/${ext === "png" ? "png" : "jpeg"}` };
       form.append("avatar", file);
       const res = await api.post("/upload/avatar", form, { headers: { "Content-Type": "multipart/form-data" } });
       if (res && (res as any).success && user) {
