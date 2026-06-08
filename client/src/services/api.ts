@@ -24,10 +24,9 @@ api.interceptors.request.use(async (config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  // FormData上传时删除Content-Type让浏览器自动设boundary
-  if (config.data instanceof FormData) {
-    delete config.headers["Content-Type"];
-  }
+  // multipart/form-data由浏览器自动设boundary
+  const ct = String(config.headers?.["Content-Type"] || "");
+  if (ct.includes("multipart")) delete config.headers["Content-Type"];
   return config;
 });
 
