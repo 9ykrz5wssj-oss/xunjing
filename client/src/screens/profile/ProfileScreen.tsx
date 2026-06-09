@@ -221,7 +221,10 @@ export function ProfileScreen({ navigation }: any) {
               if (navigator?.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                   () => Alert.alert("✅", "定位授权成功，请返回地图查看"),
-                  (err) => Alert.alert("定位失败", err.message),
+                  (err) => {
+                    const msg = err.code === 1 ? "定位被拒绝。请在 设置→Safari→位置 中设为「允许」" : err.message;
+                    Alert.alert("定位失败", msg);
+                  },
                   { enableHighAccuracy: true, timeout: 10000 }
                 );
               } else { Alert.alert("提示", "浏览器不支持GPS定位"); }
@@ -229,6 +232,9 @@ export function ProfileScreen({ navigation }: any) {
               <Text style={styles.logoutText}>📍 位置授权</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity style={styles.locationButton} onPress={() => { const { setJustLoggedIn } = useAuthStore.getState(); setJustLoggedIn(true); }} activeOpacity={0.7}>
+            <Text style={styles.logoutText}>📖 查看教程</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
             <Text style={styles.logoutText}>🚪 退出登录</Text>
           </TouchableOpacity>
