@@ -233,7 +233,7 @@ export function ProfileScreen({ navigation }: any) {
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.tutorialButton} onPress={() => { const { setJustLoggedIn } = useAuthStore.getState(); setJustLoggedIn(true); }} activeOpacity={0.7}>
-            <Text style={styles.logoutText}>📖 查看教程</Text>
+            <Text style={{ ...typography.bodyBold, color: "#FFF" }}>📖 查看教程</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
             <Text style={styles.logoutText}>🚪 退出登录</Text>
