@@ -177,7 +177,7 @@ export async function handleChestOpenRequest(
               body: `获得了 ${drop.rarity} 藏品 "${drop.item.name}"`,
             });
             if (nearbyUser.role !== "admin") {
-              const cs = chest.type === ChestType.NORMAL ? await getCooldownSeconds(chest.type);
+              const cs = await getCooldownSeconds(chest.type);
               await redis.setex(`rate:chest_${chest.type}:${nuid}`, cs, "1");
             }
             io.to(`user:${nuid}`).emit("chest_open_result", {
@@ -223,7 +223,7 @@ export async function handleChestOpenRequest(
 
     // 10. 设置冷却（管理员不设置冷却）
     if (!isAdmin) {
-      const cooldownSeconds = chest.type === ChestType.NORMAL ? await getCooldownSeconds(chest.type);
+      const cooldownSeconds = await getCooldownSeconds(chest.type);
       await redis.setex(`rate:chest_${chest.type}:${user.userId}`, cooldownSeconds, "1");
     }
 
