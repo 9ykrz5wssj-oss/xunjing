@@ -80,12 +80,6 @@ copy app\build\outputs\apk\release\app-release.apk C:\Users\21198\Desktop\app-re
 - 每5分钟宝箱补充
 - 教程弹窗（仅验证码登录后）
 
-## 每次更新：三端部署 + GitHub
-1. 服务端 scp + pm2 restart
-2. Web: 移除.native.tsx → expo export → scp → 恢复.native
-3. APK: campus-app同步 → gradlew assembleRelease → adb install → 桌面APK
-4. GitHub: git add -A && git commit && git push
-
 ## 踩过的坑（关键）
 1. .native.tsx优先级最高，Web构建必移除
 2. 不改导航框架
@@ -94,3 +88,27 @@ copy app\build\outputs\apk\release\app-release.apk C:\Users\21198\Desktop\app-re
 5. Campus-app是独立副本非junction
 6. 中文路径NDK不支持
 7. 自适应图标删除mipmap-anydpi-v26
+
+## 🔴 本次会话中的严重失误
+
+### 1. JSX布局反复失败
+AdminPanelScreen.tsx的冷却时间设置区域，从原位置移到独立位置的过程：
+- 反复使用sed/python删除和插入，每次都破坏JSX闭合标签结构
+- 最终方案：两步Edit精确替换——先在目标位置插入新CD块，再删除旧CD块+修复保存按钮
+- **教训：编辑JSX时严禁用sed行号删除，必须用Edit工具做精确文本替换**
+
+### 2. 服务器崩溃（761次重启）
+chest.handler.ts中`replace_all`把三元表达式改成不完整语法：
+```typescript
+// 错误的：chest.type === NORMAL ? await getCooldownSeconds(chest.type);
+// 正确的：await getCooldownSeconds(chest.type)
+```
+- **教训：`replace_all`前必须确认替换后的语法完整性**
+
+### 3. Zod校验丢字段（两次）
+title字段和studentId字段都被Zod schema默认strip掉：
+- **教训：新增任何API字段必须同步更新Zod schema**
+
+### 4. 数据恐慌
+服务器崩溃导致前端空白，用户以为数据全丢。实际数据完好，只是API不可用。
+- **教训：部署后必须验证API可用性（curl测试）**
