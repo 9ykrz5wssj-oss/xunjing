@@ -25,6 +25,7 @@ export function ProfileScreen({ navigation }: any) {
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [studentId, setStudentId] = useState((user as any)?.studentId || "");
 
   const fetchStats = useCallback(async () => {
     try {
@@ -204,6 +205,27 @@ export function ProfileScreen({ navigation }: any) {
             <Text style={styles.adminEntryArrow}>›</Text>
           </TouchableOpacity>
         )}
+
+        {/* ── 绑定学号 ── */}
+        <View style={styles.studentIdRow}>
+          <TextInput
+            style={styles.studentIdInput}
+            placeholder="绑定学号（用于学号登录）"
+            placeholderTextColor={colors.textHint}
+            value={studentId}
+            onChangeText={setStudentId}
+            autoCapitalize="none"
+            maxLength={20}
+          />
+          <TouchableOpacity style={styles.saveStudentIdBtn} onPress={async () => {
+            try {
+              await updateProfile({ studentId: studentId.trim() });
+              Alert.alert("✅", "学号已保存");
+            } catch (e: any) { Alert.alert("失败", e?.error || ""); }
+          }} activeOpacity={0.7}>
+            <Text style={styles.saveStudentIdText}>保存</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── 设置密码 ── */}
         <TouchableOpacity
@@ -460,6 +482,10 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.textHint,
   },
+  studentIdRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },
+  studentIdInput: { flex: 1, ...typography.body, backgroundColor: colors.surface, borderRadius: borderRadius.lg, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, color: colors.textPrimary },
+  saveStudentIdBtn: { backgroundColor: colors.primary, borderRadius: borderRadius.lg, paddingHorizontal: spacing.xl, justifyContent: "center" },
+  saveStudentIdText: { ...typography.bodyBold, color: "#FFF" },
   setPasswordBtn: { width: "100%", backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center", marginTop: spacing.lg, borderWidth: 1.5, borderColor: colors.secondary + "50" },
   setPasswordText: { ...typography.bodyBold, color: colors.textPrimary },
   actionsSection: {

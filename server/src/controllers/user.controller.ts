@@ -48,11 +48,12 @@ export async function getUserByNumericId(req: AuthRequest, res: Response): Promi
  */
 export async function updateProfile(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { nickname, avatar } = req.body;
+    const { nickname, avatar, studentId } = req.body;
     const update: any = {};
 
     if (nickname !== undefined) update.nickname = nickname;
     if (avatar !== undefined) update.avatar = avatar;
+    if (studentId !== undefined) update.studentId = studentId;
 
     if (Object.keys(update).length === 0) {
       res.status(400).json({ success: false, error: "没有需要更新的字段" });
