@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { sendVerifyCode, verifyAndLogin, logout, loginWithPassword, setUserPassword, devLogin } from "../services/auth.service";
+import { sendVerifyCode, verifyAndLogin, logout, loginWithPassword, loginByStudentId, setUserPassword, devLogin } from "../services/auth.service";
 import { AuthRequest } from "../types";
 import { getAllowedEmailDomains } from "../config/constants";
 
@@ -90,6 +90,15 @@ export async function logoutHandler(req: AuthRequest, res: Response): Promise<vo
  * POST /api/v1/auth/login-password
  * 邮箱+密码登录
  */
+export async function loginByStudentIdHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { studentId, password } = req.body;
+    if (!studentId || !password) { res.status(400).json({ success: false, error: "请输入学号和密码" }); return; }
+    const { token } = await loginByStudentId(studentId, password);
+    res.json({ success: true, data: { token, isNewUser: false }, message: "登录成功！" });
+  } catch (error: any) { res.status(400).json({ success: false, error: error.message || "登录失败" }); }
+}
+
 export async function loginByPassword(req: Request, res: Response): Promise<void> {
   try {
     const { email, password } = req.body;

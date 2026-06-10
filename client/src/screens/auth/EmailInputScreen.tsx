@@ -12,9 +12,10 @@ type Props = {
 };
 
 export function EmailInputScreen({ navigation }: Props) {
-  const [mode, setMode] = useState<"code" | "password">("code");
+  const [mode, setMode] = useState<"code" | "password" | "student">("code");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [studentId, setStudentId] = useState("");
   const [loading, setLoading] = useState(false);
   const { setToken, setJustLoggedIn } = useAuthStore();
 
@@ -66,6 +67,20 @@ export function EmailInputScreen({ navigation }: Props) {
     } finally { setLoading(false); }
   };
 
+  const handleStudentLogin = async () => {
+    const sid = studentId.trim();
+    if (!sid || !password) { Alert.alert("提示", "请输入学号和密码"); return; }
+    setLoading(true);
+    try {
+      const res = await api.post("/auth/login-student", { studentId: sid, password });
+      if (res && (res as any).success) {
+        setJustLoggedIn(true);
+        await setToken((res as any).data.token);
+      } else { Alert.alert("登录失败", (res as any).error || "学号或密码错误"); }
+    } catch (e: any) { Alert.alert("登录失败", e?.error || "请稍后再试"); }
+    finally { setLoading(false); }
+  };
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={styles.content}>
@@ -81,22 +96,22 @@ export function EmailInputScreen({ navigation }: Props) {
           <TouchableOpacity style={[styles.modeBtn, mode === "password" && styles.modeBtnActive]} onPress={() => setMode("password")}>
             <Text style={[styles.modeText, mode === "password" && styles.modeTextActive]}>密码登录</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={[styles.modeBtn, mode === "student" && styles.modeBtnActive]} onPress={() => setMode("student")}>
+            <Text style={[styles.modeText, mode === "student" && styles.modeTextActive]}>学号登录</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="输入南大邮箱"
-            placeholderTextColor={colors.textHint}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
+        {mode === "student" ? (
+          <View style={styles.inputContainer}>
+            <TextInput style={styles.input} placeholder="输入学号" placeholderTextColor={colors.textHint} value={studentId} onChangeText={setStudentId} autoCapitalize="none" autoCorrect={false} />
+          </View>
+        ) : (
+          <View style={styles.inputContainer}>
+            <TextInput style={styles.input} placeholder="输入南大邮箱" placeholderTextColor={colors.textHint} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          </View>
+        )}
 
-        {mode === "password" && (
+        {(mode === "password" || mode === "student") && (
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -117,6 +132,10 @@ export function EmailInputScreen({ navigation }: Props) {
             </TouchableOpacity>
             <Text style={styles.hint}>验证码将发送至你的南大邮箱，5分钟内有效</Text>
           </>
+        ) : mode === "student" ? (
+          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleStudentLogin} disabled={loading} activeOpacity={0.8}>
+            <Text style={styles.buttonText}>{loading ? "登录中..." : "学号登录"}</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handlePasswordLogin} disabled={loading} activeOpacity={0.8}>
             <Text style={styles.buttonText}>{loading ? "登录中..." : "登录"}</Text>

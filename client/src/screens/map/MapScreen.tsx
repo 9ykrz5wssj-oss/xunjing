@@ -30,6 +30,7 @@ export function MapScreen() {
   const navigation = useNavigation<any>();
   const [campus, setCampus] = useState<Campus>(Campus.GULOU);
   const [chests, setChests] = useState<any[]>([]);
+  const [cooldowns, setCooldowns] = useState<{normal:number,advanced:number}>({normal:0,advanced:0});
   const [events, setEvents] = useState<any[]>([]);
   const [gpsLabel, setGpsLabel] = useState("");
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -81,7 +82,7 @@ export function MapScreen() {
 
   const fetchAll = useCallback(async () => { try {
     const [cR, eR] = await Promise.all([getActiveChests(campus), api.get("/map/activity-pins", { params: { campus } })]);
-    if (cR.success && cR.data) setChests(cR.data); if (eR && (eR as any).success) setEvents((eR as any).data || []);
+    if (cR.success && cR.data) { setChests(cR.data); setCooldowns((cR as any).cooldowns || {normal:0,advanced:0}); }; if (eR && (eR as any).success) setEvents((eR as any).data || []);
     updateMarkers(cR.data || [], (eR as any)?.data || []);
   } catch {} }, [campus]);
   useEffect(() => { fetchAll(); const t = setInterval(fetchAll, 20000); return () => clearInterval(t); }, [fetchAll]);

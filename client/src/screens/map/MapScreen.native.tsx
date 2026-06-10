@@ -25,6 +25,7 @@ export function MapScreen() {
   const navigation = useNavigation<any>();
   const [campus, setCampus] = useState<Campus>(Campus.GULOU);
   const [chests, setChests] = useState<any[]>([]);
+  const [cooldowns, setCooldowns] = useState<{normal:number,advanced:number}>({normal:0,advanced:0});
   const [events, setEvents] = useState<any[]>([]);
   const [mapState, setMapState] = useState<"loading" | "ready" | "failed">("loading");
   const [gpsLabel, setGpsLabel] = useState("");
@@ -64,7 +65,7 @@ export function MapScreen() {
   const fetchAll = useCallback(async () => {
     try {
       const [cR, eR] = await Promise.all([getActiveChests(campus), api.get("/map/activity-pins", { params: { campus } })]);
-      if (cR.success && cR.data) setChests(cR.data);
+      if (cR.success && cR.data) { setChests(cR.data); setCooldowns((cR as any).cooldowns || {normal:0,advanced:0}); };
       if (eR && (eR as any).success) setEvents((eR as any).data || []);
       if (wv.current && mapState === "ready") {
         wv.current.postMessage(JSON.stringify({ type: "updateMarkers", chests: cR.data || [], events: (eR as any)?.data || [] }));

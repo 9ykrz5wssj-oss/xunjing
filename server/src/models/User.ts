@@ -20,6 +20,7 @@ const UserSchema = new Schema<IUser>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     nickname: { type: String, default: "", maxlength: 20 },
+    studentId: { type: String, default: "", maxlength: 20 },
     userId: { type: Number, required: true, unique: true },
     avatar: { type: String, default: "" },
     password: { type: String, default: "" },

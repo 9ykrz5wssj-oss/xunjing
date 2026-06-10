@@ -165,7 +165,7 @@ export const CHEST_CONFIG = {
   CHEST_RESPAWN_INTERVAL_MIN: 30,         // 宝箱补充刷新间隔（分钟）
   CHEST_MAX_LIFETIME_HOURS: 6,            // 宝箱最长存活时间
   NORMAL_CHEST_COOLDOWN_HOURS: 1,         // 普通宝箱冷却
-  ADVANCED_CHEST_COOLDOWN_HOURS: 24,      // 高级宝箱冷却
+  ADVANCED_CHEST_COOLDOWN_HOURS: 1,       // 高级宝箱冷却（与普通宝箱相同）
 };
 
 // ── 活动配置 ──

@@ -148,6 +148,18 @@ export async function loginWithPassword(email: string, password: string): Promis
 /**
  * 设置/修改登录密码
  */
+export async function loginByStudentId(studentId: string, password: string): Promise<{ token: string }> {
+  const user = await User.findOne({ studentId }).select("+password");
+  if (!user) throw new Error("学号不存在或未绑定");
+  if (!user.password) throw new Error("该账号未设置密码，请使用验证码登录");
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) throw new Error("密码错误");
+  const token = signToken({ userId: user._id.toString(), email: user.email, role: user.role, numericId: user.userId });
+  const redis = getRedis();
+  await redis.setex(`session:${token}`, 7 * 86400, JSON.stringify({ userId: user._id.toString(), email: user.email, role: user.role, numericId: user.userId }));
+  return { token };
+}
+
 export async function setUserPassword(userId: string, password: string): Promise<void> {
   const hashed = await bcrypt.hash(password, 10);
   await User.findByIdAndUpdate(userId, { password: hashed });

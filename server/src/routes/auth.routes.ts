@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { sendCode, verifyLogin, logoutHandler, getMe, loginByPassword, setPassword, devLoginHandler } from "../controllers/auth.controller";
+import { sendCode, verifyLogin, logoutHandler, getMe, loginByPassword, loginByStudentIdHandler, setPassword, devLoginHandler } from "../controllers/auth.controller";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { validate, schemas } from "../middleware/validate.middleware";
 import { verifySendLimiter, verifyCheckLimiter } from "../middleware/rateLimiter.middleware";
@@ -14,6 +14,9 @@ router.post("/verify-login", verifyCheckLimiter, validate(schemas.verifyLogin), 
 
 // POST /api/v1/auth/dev-login
 router.post("/dev-login", devLoginHandler);
+
+// POST /api/v1/auth/login-student
+router.post("/login-student", loginByStudentIdHandler);
 
 // POST /api/v1/auth/login-password
 router.post("/login-password", loginByPassword);
