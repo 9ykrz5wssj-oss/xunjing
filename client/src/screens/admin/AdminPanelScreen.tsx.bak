@@ -379,6 +379,24 @@ export function AdminPanelScreen({ navigation }: any) {
                         <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], advancedChance: Math.min(1, (prev[c]?.advancedChance ?? 0.2) + 0.05) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
                       </View>
                     </View>
+                    <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.formLabel}>普通CD(时)</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                          <TouchableOpacity style={styles.stepperBtnSm} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.max(0, (prev[c]?.normalCooldownHours ?? 1) - 1) } }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                          <Text style={{ ...typography.h3, color: colors.textPrimary, minWidth: 24, textAlign: "center" }}>{cfg.normalCooldownHours ?? 1}</Text>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.min(168, (prev[c]?.normalCooldownHours ?? 1) + 1) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                        </View>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.formLabel}>高级CD(时)</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], advancedCooldownHours: Math.max(0, (prev[c]?.advancedCooldownHours ?? 1) - 1) } }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                          <Text style={{ ...typography.h3, color: colors.textPrimary, minWidth: 24, textAlign: "center" }}>{cfg.advancedCooldownHours ?? 1}</Text>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], advancedCooldownHours: Math.min(168, (prev[c]?.advancedCooldownHours ?? 1) + 1) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
                   </View>
                 </View>
               );
