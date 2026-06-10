@@ -180,7 +180,11 @@ export function MapScreen() {
       {dist != null && <Text style={dlStyles.distText}>📍 距离你 {dist}m</Text>}
       <Text style={dlStyles.desc}>靠近宝箱20米范围内即可解锁开启</Text>
       <Text style={dlStyles.hint}>开启后随机获得一件数字藏品</Text>
-      {inRange ? (
+      {cooldowns.normal > 0 ? (
+        <View style={{ backgroundColor: colors.warning + "15", borderRadius: borderRadius.md, padding: spacing.md, marginBottom: spacing.md, width: "100%", alignItems: "center" }}>
+          <Text style={{ color: colors.warning, fontWeight: "700" }}>⏳ 冷却中 · {Math.floor(cooldowns.normal / 60)}分{cooldowns.normal % 60}秒后解锁</Text>
+        </View>
+      ) : inRange ? (
         <T style={dlStyles.unlockBtn} onPress={() => handleUnlockChest(chest._id)} activeOpacity={0.7}>
           <Text style={dlStyles.unlockBtnText}>🎁 解锁宝箱</Text>
         </T>
@@ -219,6 +223,11 @@ export function MapScreen() {
         <Text style={{ ...typography.small, color: enough ? colors.success : colors.textHint, marginTop: spacing.xs }}>{needed <= 1 ? "🧑 单人即可开启" : enough ? "✅ 人数已够，可以解锁！" : `还需 ${needed - nCount} 人`}</Text>
       </View>
       <Text style={dlStyles.hint}>多人协作开启后，每位参与者均可获得藏品</Text>
+      {cooldowns.advanced > 0 && (
+        <View style={{ backgroundColor: colors.warning + "15", borderRadius: borderRadius.md, padding: spacing.md, marginBottom: spacing.md, width: "100%", alignItems: "center" }}>
+          <Text style={{ color: colors.warning, fontWeight: "700" }}>⏳ 冷却中 · {Math.floor(cooldowns.advanced / 60)}分{cooldowns.advanced % 60}秒后解锁</Text>
+        </View>
+      )}
       <View style={dlStyles.btnRow}>
         <T style={dlStyles.cancelBtn} onPress={closeDialog} activeOpacity={0.7}>
           <Text style={dlStyles.cancelBtnText}>关闭</Text>

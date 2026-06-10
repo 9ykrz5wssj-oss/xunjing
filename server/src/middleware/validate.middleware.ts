@@ -46,6 +46,7 @@ export const schemas = {
   updateProfile: z.object({
     nickname: z.string().min(1).max(20).optional(),
     avatar: z.string().url().optional(),
+    studentId: z.string().max(20).optional(),
   }),
 
   createEvent: z.object({
