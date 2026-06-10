@@ -378,6 +378,24 @@ export function AdminPanelScreen({ navigation }: any) {
                         <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], advancedChance: Math.min(1, (prev[c]?.advancedChance ?? 0.2) + 0.05) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
                       </View>
                     </View>
+                    <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.formLabel}>普通CD(时)</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.max(0, (prev[c]?.normalCooldownHours ?? 1) - 1) } }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                          <Text style={{ ...typography.h3, color: colors.textPrimary, minWidth: 24, textAlign: "center" }}>{cfg.normalCooldownHours ?? 1}</Text>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.min(168, (prev[c]?.normalCooldownHours ?? 1) + 1) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                        </View>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.formLabel}>高级CD(时)</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], advancedCooldownHours: Math.max(0, (prev[c]?.advancedCooldownHours ?? 1) - 1) } }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                          <Text style={{ ...typography.h3, color: colors.textPrimary, minWidth: 24, textAlign: "center" }}>{cfg.advancedCooldownHours ?? 1}</Text>
+                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], advancedCooldownHours: Math.min(168, (prev[c]?.advancedCooldownHours ?? 1) + 1) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
                   </View>
                 </View>
               );
@@ -385,8 +403,8 @@ export function AdminPanelScreen({ navigation }: any) {
             <TouchableOpacity style={[styles.createChestBtn, { backgroundColor: colors.info, marginTop: spacing.sm }]} onPress={async () => {
               try {
                 for (const c of ["gulou", "xianlin"]) {
-                  const cfg = chestConfig[c] || { maxNormalChests: 3, advancedChance: 0.2 };
-                  await api.put("/admin/chest-config", { campus: c, maxNormalChests: cfg.maxNormalChests ?? 3, advancedChance: cfg.advancedChance ?? 0.2 });
+                  const cfg = chestConfig[c] || { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 };
+                  await api.put("/admin/chest-config", { campus: c, maxNormalChests: cfg.maxNormalChests ?? 3, advancedChance: cfg.advancedChance ?? 0.2, normalCooldownHours: cfg.normalCooldownHours ?? 1, advancedCooldownHours: cfg.advancedCooldownHours ?? 1 });
                 }
                 Alert.alert("✅", "宝箱配置已保存，将在下次补充时生效");
               } catch (e: any) { Alert.alert("失败", e?.error || ""); }

@@ -5,6 +5,7 @@ import { ChestOpenLog } from "../models/ChestOpenLog";
 import { UserCollection } from "../models/UserCollection";
 import { User } from "../models/User";
 import { ChestStatus, ChestType, CHEST_CONFIG } from "../config/constants";
+import { ChestConfig } from "../models/ChestConfig";
 import { isWithinChestRadius } from "../services/geo.service";
 import { rollDrop } from "../services/drop.service";
 import { createNotification } from "../services/notification.service";
@@ -64,6 +65,13 @@ export async function handleChestOpenRequest(
 
     // 3. 频率限制检查（管理员跳过冷却）
     const isAdmin = user.role === "admin";
+    const getCooldownSeconds = async (chestType: ChestType) => {
+      try {
+        const cfg = await ChestConfig.findOne({ campus: chest.campus });
+        const hrs = chestType === ChestType.NORMAL ? (cfg?.normalCooldownHours ?? CHEST_CONFIG.NORMAL_CHEST_COOLDOWN_HOURS) : (cfg?.advancedCooldownHours ?? CHEST_CONFIG.ADVANCED_CHEST_COOLDOWN_HOURS);
+        return hrs * 3600;
+      } catch { return (chestType === ChestType.NORMAL ? CHEST_CONFIG.NORMAL_CHEST_COOLDOWN_HOURS : CHEST_CONFIG.ADVANCED_CHEST_COOLDOWN_HOURS) * 3600; }
+    };
     const formatCD = (s: number) => s >= 3600 ? `${Math.floor(s/3600)}小时${Math.floor((s%3600)/60)}分钟` : `${Math.floor(s/60)}分钟${s%60}秒`;
     if (!isAdmin) {
       if (chest.type === ChestType.NORMAL) {
@@ -169,7 +177,7 @@ export async function handleChestOpenRequest(
               body: `获得了 ${drop.rarity} 藏品 "${drop.item.name}"`,
             });
             if (nearbyUser.role !== "admin") {
-              const cs = chest.type === ChestType.NORMAL ? CHEST_CONFIG.NORMAL_CHEST_COOLDOWN_HOURS * 3600 : CHEST_CONFIG.ADVANCED_CHEST_COOLDOWN_HOURS * 3600;
+              const cs = chest.type === ChestType.NORMAL ? await getCooldownSeconds(chest.type);
               await redis.setex(`rate:chest_${chest.type}:${nuid}`, cs, "1");
             }
             io.to(`user:${nuid}`).emit("chest_open_result", {
@@ -215,7 +223,7 @@ export async function handleChestOpenRequest(
 
     // 10. 设置冷却（管理员不设置冷却）
     if (!isAdmin) {
-      const cooldownSeconds = chest.type === ChestType.NORMAL ? CHEST_CONFIG.NORMAL_CHEST_COOLDOWN_HOURS * 3600 : CHEST_CONFIG.ADVANCED_CHEST_COOLDOWN_HOURS * 3600;
+      const cooldownSeconds = chest.type === ChestType.NORMAL ? await getCooldownSeconds(chest.type);
       await redis.setex(`rate:chest_${chest.type}:${user.userId}`, cooldownSeconds, "1");
     }
 

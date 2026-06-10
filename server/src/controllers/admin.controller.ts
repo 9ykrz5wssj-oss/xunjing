@@ -138,21 +138,22 @@ export async function giftItem(req: AuthRequest, res: Response): Promise<void> {
 export async function getChestConfig(req: AuthRequest, res: Response): Promise<void> {
   try {
     const configs = await ChestConfig.find();
-    const data: any = { gulou: { maxNormalChests: 3, advancedChance: 0.2 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2 } };
-    configs.forEach((c) => { data[c.campus] = { maxNormalChests: c.maxNormalChests, advancedChance: c.advancedChance }; });
+    const data: any = { gulou: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 } };
+    configs.forEach((c) => { data[c.campus] = { maxNormalChests: c.maxNormalChests, advancedChance: c.advancedChance, normalCooldownHours: c.normalCooldownHours ?? 1, advancedCooldownHours: c.advancedCooldownHours ?? 1 }; });
     res.json({ success: true, data });
   } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
 }
 
 export async function updateChestConfig(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { campus, maxNormalChests, advancedChance } = req.body;
+    const { campus, maxNormalChests, advancedChance, normalCooldownHours, advancedCooldownHours } = req.body;
     if (!campus || maxNormalChests == null || advancedChance == null) {
       res.status(400).json({ success: false, error: "缺少参数" }); return;
     }
-    await ChestConfig.findOneAndUpdate(
-      { campus },
-      { campus, maxNormalChests, advancedChance, updatedAt: new Date() },
+    const upd: any = { campus, maxNormalChests, advancedChance, updatedAt: new Date() };
+    if (normalCooldownHours != null) upd.normalCooldownHours = normalCooldownHours;
+    if (advancedCooldownHours != null) upd.advancedCooldownHours = advancedCooldownHours;
+    await ChestConfig.findOneAndUpdate({ campus }, upd,
       { upsert: true, new: true }
     );
     logger.info(`[管理员] 更新宝箱配置: ${campus} maxChests=${maxNormalChests} advancedChance=${advancedChance}`);
