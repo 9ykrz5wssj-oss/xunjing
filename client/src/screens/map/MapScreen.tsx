@@ -43,6 +43,7 @@ export function MapScreen() {
   const socketRef = useRef<any>(null); const mapRef = useRef<any>(null); const markersRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null); const divRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [showCampusModal, setShowCampusModal] = useState(false);
 
   useEffect(() => { if (!divRef.current || mapRef.current) return; let c = false;
     loadLeaflet().then((leaf) => { if (c || !leaf || !divRef.current) return; L = leaf;
@@ -115,8 +116,8 @@ export function MapScreen() {
   return (
     <View style={S.ct}>
       <View style={S.tb}><View style={S.sw}>
-        <T onPress={() => { setCampus(Campus.GULOU); mapRef.current?.setView([CAMPUS_CENTERS.gulou.lat, CAMPUS_CENTERS.gulou.lng], 16); }} style={[S.sb, campus === Campus.GULOU && S.sa]}><Text style={[S.st, campus === Campus.GULOU && S.sta]}>🏫 鼓楼</Text></T>
-        <T onPress={() => { setCampus(Campus.XIANLIN); mapRef.current?.setView([CAMPUS_CENTERS.xianlin.lat, CAMPUS_CENTERS.xianlin.lng], 15); }} style={[S.sb, campus === Campus.XIANLIN && S.sa]}><Text style={[S.st, campus === Campus.XIANLIN && S.sta]}>🏢 仙林</Text></T>
+        <T activeOpacity={0.7} style={[S.sb, S.sa]}><Text style={[S.st, S.sta]}>🗺️ 地图</Text></T>
+        <T activeOpacity={0.7} onPress={() => (navigation as any).navigate("ActivitySquare")} style={S.sb}><Text style={S.st}>🎪 活动广场</Text></T>
       </View></View>
       {gpsLabel ? <View style={S.gb}><Text style={S.gt}>{gpsLabel}</Text></View> : null}
       <View style={{ flex: 1 }}>
@@ -125,7 +126,7 @@ export function MapScreen() {
         <View style={S.cs}>
           <View style={S.ctr}><Text style={S.ci}>📦</Text><Text style={S.cn}>{nc.length}</Text></View>
           <View style={[S.ctr, S.ca]}><Text style={S.ci}>💎</Text><Text style={S.cn}>{ac.length}</Text></View>
-          <T style={S.sqBtn} onPress={() => (navigation as any).navigate("ActivitySquare")}><Text style={{ fontSize: 14 }}>🎪</Text><Text style={{ fontSize: 10, fontWeight: "800", color: colors.primary }}>活动广场</Text></T>
+          <T style={S.sqBtn} onPress={() => setShowCampusModal(true)}><Text style={{ fontSize: 14 }}>🏫</Text><Text style={{ fontSize: 10, fontWeight: "800", color: colors.primary }}>校区切换</Text></T>
         </View>
         <T style={S.locBtn} onPress={() => { if (mapRef.current && userMarkerRef.current) { const p = userMarkerRef.current.getLatLng(); mapRef.current.setView([p.lat, p.lng], Math.max(mapRef.current.getZoom(), 16)); } }}><Text style={{ fontSize: 20 }}>📍</Text></T>
       </View>
@@ -144,6 +145,17 @@ export function MapScreen() {
         {openResult?.success ? <><Text style={[R.rb, { backgroundColor: (RCOLORS[openResult.rarity]||colors.primary)+"20" }]}><Text style={{ color: RCOLORS[openResult.rarity]||colors.primary, fontWeight: "800" }}>{openResult.rarity}</Text></Text><Text style={R.cg}>🎉 恭喜获得 🎉</Text>{openResult.item?.imageUrl && <Image source={{ uri: fixImageUrl(openResult.item.imageUrl) }} style={R.im} resizeMode="contain" />}<Text style={R.nm}>{openResult.item?.name}</Text><T style={[R.db, { backgroundColor: RCOLORS[openResult.rarity]||colors.primary }]} onPress={() => { setShowResultModal(false); setOpenResult(null); }}><Text style={R.dt}>太棒了！</Text></T></> : <><Text style={{ fontSize: 56 }}>😢</Text><Text style={D.tl}>开箱失败</Text><Text style={D.dc}>{openResult?.error}</Text><T style={D.pb} onPress={() => { setShowResultModal(false); setOpenResult(null); }}><Text style={D.pt}>知道了</Text></T></>}
       </T></T></Modal>
       {unlockingChestId && <View style={Ld.lo}><View style={Ld.lc}><ActivityIndicator size="large" color={colors.primary} /><Text style={{ fontWeight: "700", marginTop: 20 }}>正在开启...</Text></View></View>}
+      {/* 校区选择 */}
+      <Modal visible={showCampusModal} transparent animationType="fade" onRequestClose={() => setShowCampusModal(false)}>
+        <T style={D.ov} activeOpacity={1} onPress={() => setShowCampusModal(false)}>
+          <T style={D.cd} activeOpacity={1} onPress={() => {}}>
+            <Text style={D.tl}>选择校区</Text>
+            <T style={[D.pb, campus === Campus.GULOU && { backgroundColor: colors.rarity.典藏 }, { marginBottom: 8 }]} onPress={() => { setCampus(Campus.GULOU); mapRef.current?.setView([CAMPUS_CENTERS.gulou.lat, CAMPUS_CENTERS.gulou.lng], 16); setShowCampusModal(false); }}><Text style={D.pt}>🏫 鼓楼校区</Text></T>
+            <T style={[D.pb, campus === Campus.XIANLIN && { backgroundColor: colors.rarity.典藏 }]} onPress={() => { setCampus(Campus.XIANLIN); mapRef.current?.setView([CAMPUS_CENTERS.xianlin.lat, CAMPUS_CENTERS.xianlin.lng], 15); setShowCampusModal(false); }}><Text style={D.pt}>🏢 仙林校区</Text></T>
+            <T style={[D.btn, { width: "100%", backgroundColor: colors.surfaceAlt, marginTop: 8 }]} onPress={() => setShowCampusModal(false)}><Text style={{ fontWeight: "600" }}>返回</Text></T>
+          </T>
+        </T>
+      </Modal>
     </View>
   );
 }

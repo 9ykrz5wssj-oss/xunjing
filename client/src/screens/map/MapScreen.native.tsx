@@ -39,6 +39,7 @@ export function MapScreen() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [nearbyCounts, setNearbyCounts] = useState<Record<string, number>>({});
   const socketRef = useRef<any>(null);
+  const [showCampusModal, setShowCampusModal] = useState(false);
   const wv = useRef<WebView>(null);
 
   // 自定义高德原生定位
@@ -356,8 +357,8 @@ init();
     <View style={styles.ct}>
       <View style={styles.tb}>
         <View style={styles.sw}>
-          <T activeOpacity={0.7} onPress={() => switchCampus(Campus.GULOU)} style={[styles.sb, campus === Campus.GULOU && styles.sa]}><Text style={[styles.st, campus === Campus.GULOU && styles.sta]}>🏫 鼓楼</Text></T>
-          <T activeOpacity={0.7} onPress={() => switchCampus(Campus.XIANLIN)} style={[styles.sb, campus === Campus.XIANLIN && styles.sa]}><Text style={[styles.st, campus === Campus.XIANLIN && styles.sta]}>🏢 仙林</Text></T>
+          <T activeOpacity={0.7} style={[styles.sb, styles.sa]}><Text style={[styles.st, styles.sta]}>🗺️ 地图</Text></T>
+          <T activeOpacity={0.7} onPress={() => navigation.navigate("ActivitySquare")} style={styles.sb}><Text style={styles.st}>🎪 活动广场</Text></T>
         </View>
       </View>
       {gpsLabel ? <View style={styles.gb}><Text style={styles.gt}>{gpsLabel}</Text></View> : null}
@@ -372,9 +373,9 @@ init();
         <View style={styles.cs}>
           <View style={styles.ctr}><Text style={styles.ci}>📦</Text><Text style={styles.cn}>{nc.length}</Text></View>
           <View style={[styles.ctr, styles.ca]}><Text style={styles.ci}>💎</Text><Text style={styles.cn}>{ac.length}</Text></View>
-          <T style={styles.sqBtn} onPress={() => navigation.navigate("ActivitySquare")} activeOpacity={0.7}>
-            <Text style={{ fontSize: 14 }}>🎪</Text>
-            <Text style={{ fontSize: 10, fontWeight: "800", color: colors.primary, marginTop: 1 }}>活动广场</Text>
+          <T style={styles.sqBtn} onPress={() => setShowCampusModal(true)} activeOpacity={0.7}>
+            <Text style={{ fontSize: 14 }}>🏫</Text>
+            <Text style={{ fontSize: 10, fontWeight: "800", color: colors.primary, marginTop: 1 }}>校区切换</Text>
           </T>
         </View>
         <T style={styles.locBtn} onPress={() => { wv.current?.postMessage(JSON.stringify({ type: "centerOnUser" })); }} activeOpacity={0.7}>
@@ -434,6 +435,23 @@ init();
           </View>
         </View>
       )}
+      {/* 校区选择弹窗 */}
+      <Modal visible={showCampusModal} transparent animationType="fade" onRequestClose={() => setShowCampusModal(false)}>
+        <T style={dlStyles.overlay} activeOpacity={1} onPress={() => setShowCampusModal(false)}>
+          <T style={dlStyles.card} activeOpacity={1} onPress={() => {}}>
+            <Text style={dlStyles.title}>选择校区</Text>
+            <T style={[dlStyles.primaryBtn, campus === Campus.GULOU && { backgroundColor: colors.rarity.典藏 }, { marginBottom: spacing.sm }]} onPress={() => { switchCampus(Campus.GULOU); setShowCampusModal(false); }} activeOpacity={0.7}>
+              <Text style={dlStyles.primaryBtnText}>🏫 鼓楼校区</Text>
+            </T>
+            <T style={[dlStyles.primaryBtn, campus === Campus.XIANLIN && { backgroundColor: colors.rarity.典藏 }]} onPress={() => { switchCampus(Campus.XIANLIN); setShowCampusModal(false); }} activeOpacity={0.7}>
+              <Text style={dlStyles.primaryBtnText}>🏢 仙林校区</Text>
+            </T>
+            <T style={[dlStyles.cancelBtn, { marginTop: spacing.md }]} onPress={() => setShowCampusModal(false)} activeOpacity={0.7}>
+              <Text style={dlStyles.cancelBtnText}>返回</Text>
+            </T>
+          </T>
+        </T>
+      </Modal>
     </View>
   );
 }
