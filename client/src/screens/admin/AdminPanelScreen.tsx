@@ -30,7 +30,7 @@ export function AdminPanelScreen({ navigation }: any) {
   const [chestRequiredPlayers, setChestRequiredPlayers] = useState(3);
   const [chestCreating, setChestCreating] = useState(false);
   const [activeChests, setActiveChests] = useState<any[]>([]);
-  const [chestConfig, setChestConfig] = useState<any>({ gulou: { maxNormalChests: 3, advancedChance: 0.2 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2 } });
+  const [chestConfig, setChestConfig] = useState<any>({ gulou: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 } });
   const [dropConfig, setDropConfig] = useState<any>({ normal: {}, advanced: {} });
   const [giftUserId, setGiftUserId] = useState("");
   const [giftItemId, setGiftItemId] = useState("");
