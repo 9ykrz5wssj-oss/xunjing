@@ -382,7 +382,7 @@ export function AdminPanelScreen({ navigation }: any) {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.formLabel}>普通CD(时)</Text>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                          <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.max(0, (prev[c]?.normalCooldownHours ?? 1) - 1) } }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                          <TouchableOpacity style={styles.stepperBtnSm} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.max(0, (prev[c]?.normalCooldownHours ?? 1) - 1) } }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
                           <Text style={{ ...typography.h3, color: colors.textPrimary, minWidth: 24, textAlign: "center" }}>{cfg.normalCooldownHours ?? 1}</Text>
                           <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((prev: any) => ({ ...prev, [c]: { ...prev[c], normalCooldownHours: Math.min(168, (prev[c]?.normalCooldownHours ?? 1) + 1) } }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
                         </View>
