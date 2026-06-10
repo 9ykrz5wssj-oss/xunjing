@@ -519,11 +519,15 @@ export function AdminPanelScreen({ navigation }: any) {
             {/* 藏品选择弹窗 */}
             <Modal visible={showGiftPicker} transparent animationType="slide" onRequestClose={() => setShowGiftPicker(false)}>
               <View style={styles.modalOverlay}>
-                <View style={[styles.modalCard, { maxHeight: "70%" }]}>
-                  <View style={{ padding: spacing.lg }}>
-                    <Text style={{ ...typography.h3, textAlign: "center", marginBottom: spacing.md }}>🎁 选择要赠送的藏品</Text>
+                <View style={[styles.modalCard, { maxHeight: "75%" }]}>
+                  <View style={{ padding: spacing.lg, flex: 1 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm }}>
+                      <Text style={{ ...typography.h3 }}>🎁 选择藏品</Text>
+                      <TouchableOpacity onPress={() => setShowGiftPicker(false)}><Text style={{ ...typography.h2, color: colors.primary }}>✕</Text></TouchableOpacity>
+                    </View>
                     <FlatList
                       data={items}
+                      style={{ flex: 1 }}
                       keyExtractor={(i) => i._id}
                       renderItem={({ item }) => (
                         <TouchableOpacity
