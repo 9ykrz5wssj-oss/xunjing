@@ -233,6 +233,7 @@ export function AdminPanelScreen({ navigation }: any) {
     <View style={styles.container}>
       {/* 头部 */}
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ paddingRight: spacing.md }}><Text style={{ ...typography.h2, color: colors.primary }}>← 返回</Text></TouchableOpacity>
         <Text style={styles.headerTitle}>👑 管理后台</Text>
       </View>
 
@@ -409,6 +410,42 @@ export function AdminPanelScreen({ navigation }: any) {
                 Alert.alert("✅", "宝箱配置已保存，将在下次补充时生效");
               } catch (e: any) { Alert.alert("失败", e?.error || ""); }
             }}>
+
+          {/* 全局冷却设置 */}
+          <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg }}>
+            <Text style={styles.chestTitle}>⏳ 冷却时间（全局）</Text>
+            <View style={styles.boundsCard}>
+              <View style={{ flexDirection: "row", gap: spacing.xl }}>
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs }}>📦 普通宝箱</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((p: any) => ({ ...p, _cd_n: Math.max(0, (p._cd_n ?? 1) - 1) }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                    <Text style={{ ...typography.h2, color: colors.textPrimary, minWidth: 50, textAlign: "center" }}>{chestConfig._cd_n ?? 1}h</Text>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((p: any) => ({ ...p, _cd_n: Math.min(168, (p._cd_n ?? 1) + 1) }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                  </View>
+                </View>
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs }}>💎 高级宝箱</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((p: any) => ({ ...p, _cd_a: Math.max(0, (p._cd_a ?? 1) - 1) }))}><Text style={styles.stepperBtnText}>−</Text></TouchableOpacity>
+                    <Text style={{ ...typography.h2, color: colors.textPrimary, minWidth: 50, textAlign: "center" }}>{chestConfig._cd_a ?? 1}h</Text>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => setChestConfig((p: any) => ({ ...p, _cd_a: Math.min(168, (p._cd_a ?? 1) + 1) }))}><Text style={styles.stepperBtnText}>+</Text></TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity style={[styles.createChestBtn, { backgroundColor: colors.rarity.典藏, marginTop: spacing.lg }]} onPress={async () => {
+                try {
+                  const nc = chestConfig._cd_n ?? 1;
+                  const ac = chestConfig._cd_a ?? 1;
+                  await api.put("/admin/chest-config", { campus: "gulou", normalCooldownHours: nc, advancedCooldownHours: ac, maxNormalChests: chestConfig.gulou?.maxNormalChests ?? 3, advancedChance: chestConfig.gulou?.advancedChance ?? 0.2 });
+                  await api.put("/admin/chest-config", { campus: "xianlin", normalCooldownHours: nc, advancedCooldownHours: ac, maxNormalChests: chestConfig.xianlin?.maxNormalChests ?? 3, advancedChance: chestConfig.xianlin?.advancedChance ?? 0.2 });
+                  Alert.alert("✅", "冷却时间已保存，立即生效");
+                } catch (e: any) { Alert.alert("失败", e?.error || ""); }
+              }}>
+                <Text style={styles.createChestBtnText}>💾 保存冷却时间</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
               <Text style={styles.createChestBtnText}>💾 保存刷新设置</Text>
             </TouchableOpacity>
           </View>
