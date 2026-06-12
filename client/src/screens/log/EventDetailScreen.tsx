@@ -113,12 +113,11 @@ export function EventDetailScreen({ route, navigation }: any) {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
       >
-        {/* 状态 + 角色 */}
+        {/* 状态 */}
         <View style={styles.statusRow}>
           <View style={[styles.statusBadge, { backgroundColor: statusColor + "15", borderColor: statusColor + "40" }]}>
             <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
-          <Text style={styles.roleText}>{isHost ? "👑 发布者" : "🤝 参与者"}</Text>
         </View>
 
         {/* 基础信息 */}

@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
+import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
 import { AuthRequest } from "../types";
 import { authMiddleware } from "../middleware/auth.middleware";
@@ -26,8 +28,27 @@ const upload = multer({
   },
 }).single("image");
 
+/**
+ * 生成缩略图（300px 宽，用于展柜卡片展示）
+ * 缩略图命名为 thumb_<原文件名>
+ */
+async function generateThumbnail(filePath: string, thumbPath: string): Promise<void> {
+  try {
+    // 保留原始格式（PNG→PNG保透明, JPEG→JPEG），避免透明图变黑底
+    const ext = path.extname(filePath).toLowerCase();
+    const isPng = ext === ".png" || ext === ".webp" || ext === ".gif";
+    await sharp(filePath)
+      .resize(300, 300, { fit: "inside", withoutEnlargement: true })
+      .toFormat(isPng ? "png" : "jpeg", isPng ? { compressionLevel: 9 } : { quality: 80 })
+      .toFile(thumbPath);
+  } catch (err) {
+    // 格式不受支持时降级为直接复制原图
+    await fs.promises.copyFile(filePath, thumbPath);
+  }
+}
+
 export function uploadItemImage(req: AuthRequest, res: Response): void {
-  upload(req as any, res as any, (err: any) => {
+  upload(req as any, res as any, async (err: any) => {
     if (err) {
       if (err.code === "LIMIT_FILE_SIZE") {
         res.status(400).json({ success: false, error: "文件不能超过10MB" });
@@ -40,8 +61,17 @@ export function uploadItemImage(req: AuthRequest, res: Response): void {
       res.status(400).json({ success: false, error: "请选择图片文件" });
       return;
     }
+
     const url = `/uploads/items/${req.file.filename}`;
-    res.json({ success: true, data: { url } });
+    const thumbFilename = `thumb_${req.file.filename}`;
+    const thumbUrl = `/uploads/items/${thumbFilename}`;
+
+    // 异步生成缩略图（不阻塞响应）
+    const filePath = req.file.path;
+    const thumbPath = path.join(path.dirname(filePath), thumbFilename);
+    generateThumbnail(filePath, thumbPath); // fire-and-forget
+
+    res.json({ success: true, data: { url, thumbnailUrl: thumbUrl } });
   });
 }
 

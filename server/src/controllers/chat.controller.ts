@@ -4,6 +4,7 @@ import { Message } from "../models/Message";
 import { User } from "../models/User";
 import { ConversationType, ContentType } from "../config/constants";
 import { getPrivateConversationId, getGroupConversationId } from "../utils/conversationId";
+import { getIO } from "../socket";
 
 export async function getPrivateChatHistory(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -30,11 +31,13 @@ export async function getPrivateChatHistory(req: AuthRequest, res: Response): Pr
         const sid = typeof m.senderId === "string" ? m.senderId : m.senderId?.toString() || "";
         const s = senderMap[sid];
         return {
+          _id: m._id,
           senderId: sid,
           senderNickname: s?.nickname || "用户",
           senderAvatar: s?.avatar || "",
           content: m.content,
           contentType: m.contentType,
+          isRevoked: m.isRevoked || false,
           createdAt: m.createdAt,
         };
       }),
@@ -112,16 +115,81 @@ export async function getGroupChatHistory(req: AuthRequest, res: Response): Prom
         const sid = typeof m.senderId === "string" ? m.senderId : m.senderId?.toString() || "";
         const s = senderMap[sid];
         return {
+          _id: m._id,
           senderId: sid,
           senderNickname: s?.nickname || "用户",
           senderAvatar: s?.avatar || "",
           content: m.content,
           contentType: m.contentType,
+          isRevoked: m.isRevoked || false,
           createdAt: m.createdAt,
         };
       }),
       conversationId,
     }});
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/** 撤回消息（仅发送者，1分钟内） */
+export async function revokeMessage(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { messageId } = req.params;
+    const message = await Message.findById(messageId);
+    if (!message) { res.status(404).json({ success: false, error: "消息不存在" }); return; }
+    if (message.senderId.toString() !== req.user!.userId.toString()) {
+      res.status(403).json({ success: false, error: "只能撤回自己的消息" }); return;
+    }
+    const elapsed = Date.now() - new Date(message.createdAt).getTime();
+    if (elapsed > 1 * 60 * 1000) {
+      res.status(400).json({ success: false, error: "超过1分钟无法撤回" }); return;
+    }
+    message.isRevoked = true;
+    await message.save();
+
+    // Socket 实时通知对方
+    const io = getIO();
+    if (io) {
+      const eventPayload = { messageId, conversationId: message.conversationId };
+      if (message.conversationType === ConversationType.PRIVATE) {
+        const parts = message.conversationId.split("_");
+        parts.forEach((uid) => io.to(`user:${uid}`).emit("message_revoked", eventPayload));
+      } else {
+        const eventId = message.conversationId.replace("event_", "");
+        io.to(`event:${eventId}`).emit("message_revoked", eventPayload);
+      }
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/** 删除消息（允许删除对话内任何人消息，硬删除） */
+export async function deleteMessage(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { messageId } = req.params;
+    const message = await Message.findById(messageId);
+    if (!message) { res.status(404).json({ success: false, error: "消息不存在" }); return; }
+    const conversationId = message.conversationId;
+    await message.deleteOne();
+
+    // Socket 实时通知对方
+    const io = getIO();
+    if (io) {
+      const eventPayload = { messageId, conversationId };
+      if (message.conversationType === ConversationType.PRIVATE) {
+        const parts = conversationId.split("_");
+        parts.forEach((uid) => io.to(`user:${uid}`).emit("message_deleted", eventPayload));
+      } else {
+        const eventId = conversationId.replace("event_", "");
+        io.to(`event:${eventId}`).emit("message_deleted", eventPayload);
+      }
+    }
+
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

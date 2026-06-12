@@ -1,10 +1,13 @@
 import { Router } from "express";
-import { createEvent, getMyEvents, getEventDetail, applyToEvent, stopRecruiting, cancelEvent, exitEvent, acceptApplication, rejectApplication } from "../controllers/event.controller";
+import { createEvent, getMyEvents, getEventDetail, applyToEvent, stopRecruiting, cancelEvent, exitEvent, acceptApplication, rejectApplication, listEvents } from "../controllers/event.controller";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { validate, schemas } from "../middleware/validate.middleware";
 
 const router = Router();
 router.use(authMiddleware);
+
+// GET /api/v1/events — 活动广场列表（支持筛选）
+router.get("/", listEvents);
 
 // POST /api/v1/events
 router.post("/", validate(schemas.createEvent), createEvent);

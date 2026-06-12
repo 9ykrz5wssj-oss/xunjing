@@ -238,22 +238,16 @@ export function ProfileScreen({ navigation }: any) {
 
         {/* ── 底部操作 ── */}
         <View style={styles.actionsSection}>
-          {Platform.OS === "web" && (
-            <TouchableOpacity style={styles.locationButton} onPress={() => {
-              if (navigator?.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                  () => Alert.alert("✅", "定位授权成功，请返回地图查看"),
-                  (err) => {
-                    const msg = err.code === 1 ? "定位被拒绝。请在 设置→Safari→位置 中设为「允许」" : err.message;
-                    Alert.alert("定位失败", msg);
-                  },
-                  { enableHighAccuracy: true, timeout: 10000 }
-                );
-              } else { Alert.alert("提示", "浏览器不支持GPS定位"); }
-            }} activeOpacity={0.7}>
-              <Text style={styles.logoutText}>📍 位置授权</Text>
-            </TouchableOpacity>
-          )}
+
+          {/* 问题反馈入口 */}
+          <TouchableOpacity
+            style={styles.feedbackButton}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate("Feedback")}
+          >
+            <Text style={styles.feedbackButtonText}>📮 问题反馈</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.tutorialButton} onPress={() => { const { setJustLoggedIn } = useAuthStore.getState(); setJustLoggedIn(true); }} activeOpacity={0.7}>
             <Text style={{ ...typography.bodyBold, color: "#FFF" }}>📖 查看教程</Text>
           </TouchableOpacity>
@@ -493,7 +487,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     gap: spacing.sm,
   },
-  locationButton: { backgroundColor: colors.info, borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center" },
+  feedbackButton: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: colors.primary + "50",
+  },
+  feedbackButtonText: {
+    ...typography.bodyBold,
+    color: colors.primary,
+  },
   tutorialButton: { backgroundColor: colors.rarity.典藏, borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center" },
   logoutButton: {
     width: "100%",

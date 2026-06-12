@@ -6,6 +6,17 @@ import { Rarity, RARITY_ORDER } from "../config/constants";
 import mongoose from "mongoose";
 
 /**
+ * 从 imageUrl 推导缩略图 URL
+ * /uploads/items/abc.jpg → /uploads/items/thumb_abc.jpg
+ */
+function getThumbnailUrl(imageUrl: string): string {
+  const parts = imageUrl.split("/");
+  const filename = parts[parts.length - 1];
+  parts[parts.length - 1] = `thumb_${filename}`;
+  return parts.join("/");
+}
+
+/**
  * GET /api/v1/items
  * [管理员] 获取全部藏品列表
  */
@@ -133,7 +144,7 @@ export async function getUserCollections(req: AuthRequest, res: Response): Promi
       { $sort: { rarity: 1, acquiredAt: -1 } },
     ]);
 
-    // 按稀有度分组并合并相同藏品
+    // 按稀有度分组并合并相同藏品，同时推导缩略图URL
     const merged: Record<string, any> = {};
     for (const c of collections) {
       const key = c.itemId.toString();
@@ -141,7 +152,10 @@ export async function getUserCollections(req: AuthRequest, res: Response): Promi
         merged[key].count += c.count;
         if (c.lastAcquiredAt > merged[key].lastAcquiredAt) merged[key].lastAcquiredAt = c.lastAcquiredAt;
       } else {
-        merged[key] = { ...c };
+        merged[key] = {
+          ...c,
+          thumbnailUrl: getThumbnailUrl(c.imageUrl),
+        };
       }
     }
     const mergedList = Object.values(merged);
@@ -195,7 +209,9 @@ export async function getOtherUserCollections(req: AuthRequest, res: Response): 
     const merged: Record<string, any> = {};
     for (const c of collections) {
       const key = c.itemId.toString();
-      if (merged[key]) { merged[key].count += c.count; } else { merged[key] = { ...c }; }
+      if (merged[key]) { merged[key].count += c.count; } else {
+        merged[key] = { ...c, thumbnailUrl: getThumbnailUrl(c.imageUrl) };
+      }
     }
     const mergedList = Object.values(merged);
     const grouped: Record<string, any[]> = {};

@@ -14,3 +14,11 @@ export async function getGroupChatHistory(eventId: string, before?: string): Pro
   const params = before ? { before } : {};
   return api.get(`/chat/group/${eventId}`, { params });
 }
+
+export async function revokeMessage(messageId: string): Promise<ApiResponse> {
+  return api.post(`/chat/message/${messageId}/revoke`);
+}
+
+export async function deleteMessageApi(messageId: string): Promise<ApiResponse> {
+  return api.delete(`/chat/message/${messageId}`);
+}

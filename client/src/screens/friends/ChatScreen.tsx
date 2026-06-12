@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, TextInput,
-  TouchableOpacity, Platform, Keyboard,
+  TouchableOpacity, Platform, Keyboard, Alert, Dimensions,
 } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { Avatar } from "../../components/Avatar";
 import { MessageBubble } from "../../components/MessageBubble";
-import { getPrivateChatHistory, sendPrivateMessage } from "../../services/chat.api";
+import { getPrivateChatHistory, sendPrivateMessage, revokeMessage, deleteMessageApi } from "../../services/chat.api";
 import { getSocket, getCurrentSocket } from "../../socket/socketClient";
 import { MessageData } from "../../types";
 import { useAuthStore } from "../../store/authStore";
@@ -19,6 +19,11 @@ export function ChatScreen({ route, navigation }: any) {
   const [showEmoji, setShowEmoji] = useState(false);
   const [loading, setLoading] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [menuIndex, setMenuIndex] = useState<number | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: MessageData; index: number; isMine: boolean; canRecall: boolean } | null>(null);
+  const menuDebounceRef = useRef(0);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const EMOJIS = ["😊","😂","❤️","👍","🎉","🔥","😍","🤔","👋","💪","🙏","✨","🌟","💯","🥳"];
   const flatListRef = useRef<FlatList>(null);
   const socketRef = useRef(getCurrentSocket());
@@ -33,7 +38,7 @@ export function ChatScreen({ route, navigation }: any) {
     })();
   }, [friend.id]);
 
-  // Socket 监听新消息
+  // Socket 监听新消息 + 撤回 + 删除
   useEffect(() => {
     const setupSocket = async () => {
       const socket = await getSocket();
@@ -47,8 +52,26 @@ export function ChatScreen({ route, navigation }: any) {
         }
       };
 
+      const handleMessageRevoked = (data: any) => {
+        if (!data?.messageId) return;
+        setMessages((prev) => prev.map((m) =>
+          m._id === data.messageId ? { ...m, isRevoked: true } : m
+        ));
+      };
+
+      const handleMessageDeleted = (data: any) => {
+        if (!data?.messageId) return;
+        setMessages((prev) => prev.filter((m) => m._id !== data.messageId));
+      };
+
       socket.on("new_private_message", handleNewMessage);
-      return () => { socket.off("new_private_message", handleNewMessage); };
+      socket.on("message_revoked", handleMessageRevoked);
+      socket.on("message_deleted", handleMessageDeleted);
+      return () => {
+        socket.off("new_private_message", handleNewMessage);
+        socket.off("message_revoked", handleMessageRevoked);
+        socket.off("message_deleted", handleMessageDeleted);
+      };
     };
     setupSocket();
   }, []);
@@ -65,6 +88,68 @@ export function ChatScreen({ route, navigation }: any) {
     });
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
+
+  // 撤回消息
+  const handleRecall = async (item: MessageData, index: number) => {
+    setMenuIndex(null);
+    setContextMenu(null);
+    if (!item._id) {
+      // 乐观发送的消息还没有服务器 _id，按内容+时间从本地移除
+      setMessages((prev) => prev.filter((m) => !(m.senderId === item.senderId && m.content === item.content && m.createdAt === item.createdAt)));
+      return;
+    }
+    try {
+      const res = await revokeMessage(item._id);
+      if (res.success) {
+        setMessages((prev) => prev.map((m) => (m._id === item._id ? { ...m, isRevoked: true } : m)));
+      } else {
+        Alert.alert("撤回失败", (res as any).error || "请稍后重试");
+      }
+    } catch (e: any) { Alert.alert("撤回失败", e?.error || "网络错误"); }
+  };
+
+  // 删除消息
+  const handleDelete = async (item: MessageData, index: number) => {
+    setMenuIndex(null);
+    setContextMenu(null);
+    if (!item._id) {
+      // 乐观发送的消息还没有服务器 _id，按内容+时间从本地移除
+      setMessages((prev) => prev.filter((m) => !(m.senderId === item.senderId && m.content === item.content && m.createdAt === item.createdAt)));
+      return;
+    }
+    try {
+      const res = await deleteMessageApi(item._id);
+      if (res.success) {
+        setMessages((prev) => prev.filter((m) => m._id !== item._id));
+      } else {
+        Alert.alert("删除失败", (res as any).error || "请稍后重试");
+      }
+    } catch (e: any) { Alert.alert("删除失败", e?.error || "网络错误"); }
+  };
+
+  // 长按/右键：弹出消息菜单（允许对所有未撤回消息操作）
+  const handleLongPress = (item: MessageData, index: number) => {
+    if (item.isRevoked) return;
+    setMenuIndex(index);
+  };
+
+  // Web 端：在点击/长按位置弹出浮层菜单
+  // e: 事件对象（可为 null，此时使用 explicitX/explicitY）
+  const showWebContextMenu = (e: any, item: MessageData, index: number, isMine: boolean, canRecall: boolean, explicitX?: number, explicitY?: number) => {
+    if (item.isRevoked) return;
+    const now = Date.now();
+    if (now - menuDebounceRef.current < 300) return; // 防止 onLongPress + onContextMenu 重复触发
+    menuDebounceRef.current = now;
+    const win = Dimensions.get("window");
+    const rawX: number = explicitX ?? e?.nativeEvent?.clientX ?? e?.nativeEvent?.pageX ?? 0;
+    const rawY: number = explicitY ?? e?.nativeEvent?.clientY ?? e?.nativeEvent?.pageY ?? 0;
+    // 菜单大约宽 130px 高 44px，保证不超出屏幕
+    const menuW = 130;
+    const menuH = 50;
+    const x = Math.min(rawX, win.width - menuW - 8);
+    const y = Math.max(8, rawY - menuH - 4);
+    setContextMenu({ x, y, item, index, isMine, canRecall });
+  };
 
   // 发送消息
   const handleSend = async () => {
@@ -114,16 +199,79 @@ export function ChatScreen({ route, navigation }: any) {
     const isMine = String(item.senderId) === String(user?.id || user?._id || "");
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showAvatar = !prevMsg || prevMsg.senderId !== item.senderId;
+    const showMenu = menuIndex === index;
+    const elapsed = Date.now() - new Date(item.createdAt).getTime();
+    // 容错：createdAt无效时 elapsed 为 NaN，视为刚发送（允许撤回）
+    const safeElapsed = isNaN(elapsed) ? 0 : elapsed;
+    const canRecall = isMine && safeElapsed <= 1 * 60 * 1000;
+    const isWeb = Platform.OS === "web";
 
     return (
-      <MessageBubble
-        content={item.content}
-        isMine={isMine}
-        senderNickname={item.senderNickname}
-        senderAvatar={item.senderAvatar}
-        timestamp={item.createdAt}
-        showAvatar={showAvatar}
-      />
+      <View style={menuStyles.msgRow}>
+        {/* 原生端：消息菜单（浮在气泡上方） */}
+        {!isWeb && showMenu && (
+          <View style={[menuStyles.menuBar, isMine ? menuStyles.menuBarMine : menuStyles.menuBarOther]}>
+            {canRecall && (
+              <TouchableOpacity style={menuStyles.menuBtn} onPress={() => handleRecall(item, index)} activeOpacity={0.6}>
+                <Text style={menuStyles.menuBtnText}>撤回</Text>
+              </TouchableOpacity>
+            )}
+            {/* 删除按钮对所有消息显示（含对方消息） */}
+            <TouchableOpacity style={menuStyles.menuBtn} onPress={() => handleDelete(item, index)} activeOpacity={0.6}>
+              <Text style={[menuStyles.menuBtnText, menuStyles.menuBtnDel]}>删除</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {/* Web 端：自定义长按（onTouchStart+定时器）+ 右键 */}
+        {/* @ts-expect-error onContextMenu 仅 Web DOM 支持 */}
+        <View
+          onTouchStart={
+            isWeb
+              ? (e: any) => {
+                  touchPosRef.current = {
+                    x: e.nativeEvent?.pageX ?? e.nativeEvent?.locationX ?? 0,
+                    y: e.nativeEvent?.pageY ?? e.nativeEvent?.locationY ?? 0,
+                  };
+                  if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = setTimeout(() => {
+                    showWebContextMenu(null, item, index, isMine, canRecall, touchPosRef.current.x, touchPosRef.current.y);
+                  }, 500);
+                }
+              : undefined
+          }
+          onTouchEnd={
+            isWeb
+              ? () => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }
+              : undefined
+          }
+          onTouchMove={
+            isWeb
+              ? () => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }
+              : undefined
+          }
+          onLongPress={
+            isWeb
+              ? undefined // Web 端用自定义 onTouchStart 代替，避免与 ScrollView 冲突
+              : () => handleLongPress(item, index)
+          }
+          onContextMenu={
+            isWeb
+              ? (e: any) => { e.preventDefault(); showWebContextMenu(e, item, index, isMine, canRecall); }
+              : undefined
+          }
+          style={isWeb ? ({ userSelect: "none", WebkitTouchCallout: "none", cursor: "default" } as any) : undefined}
+        >
+          <MessageBubble
+            content={item.content}
+            isMine={isMine}
+            senderNickname={item.senderNickname}
+            senderAvatar={item.senderAvatar}
+            timestamp={item.createdAt}
+            showAvatar={showAvatar}
+            isRevoked={item.isRevoked}
+          />
+        </View>
+      </View>
     );
   };
 
@@ -144,21 +292,29 @@ export function ChatScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* 消息列表 */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item, index) => `${item.senderId}-${index}-${item.createdAt}`}
-        renderItem={renderMessage}
-        contentContainerStyle={[styles.msgList, messages.length === 0 && styles.msgListEmpty]}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-        ListEmptyComponent={
-          <View style={styles.emptyChat}>
-            <Text style={styles.emptyEmoji}>💬</Text>
-            <Text style={styles.emptyText}>开始聊天吧！</Text>
-          </View>
-        }
-      />
+      {/* 消息列表（点击空白处关闭菜单） */}
+      <TouchableOpacity
+        style={{ flex: 1 }}
+        activeOpacity={1}
+        onPress={menuIndex != null || contextMenu != null ? () => { setMenuIndex(null); setContextMenu(null); } : undefined}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item, index) => `${item.senderId}-${index}-${item.createdAt}`}
+          renderItem={renderMessage}
+          contentContainerStyle={[styles.msgList, messages.length === 0 && styles.msgListEmpty]}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onScrollBeginDrag={() => { setMenuIndex(null); setContextMenu(null); }}
+          scrollEventThrottle={16}
+          ListEmptyComponent={
+            <View style={styles.emptyChat}>
+              <Text style={styles.emptyEmoji}>💬</Text>
+              <Text style={styles.emptyText}>开始聊天吧！</Text>
+            </View>
+          }
+        />
+      </TouchableOpacity>
 
       {/* 输入栏 */}
       <View style={styles.inputBar}>
@@ -180,8 +336,10 @@ export function ChatScreen({ route, navigation }: any) {
           onChangeText={setInputText}
           placeholder="输入消息..."
           placeholderTextColor={colors.textHint}
-          multiline
           maxLength={500}
+          blurOnSubmit={false}
+          onSubmitEditing={handleSend}
+          returnKeyType="send"
         />
         <TouchableOpacity
           style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
@@ -192,6 +350,36 @@ export function ChatScreen({ route, navigation }: any) {
           <Text style={styles.sendBtnText}>发送</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Web 端：固定定位的浮层菜单（解决 FlatList 裁剪问题） */}
+      {contextMenu && Platform.OS === "web" && (
+        <>
+          {/* 全屏透明遮罩：点击任意空白处关闭菜单 */}
+          <View
+            style={overlayStyles.backdrop}
+            onClick={() => setContextMenu(null)}
+          />
+          {/* 菜单本体 */}
+          <View style={[overlayStyles.menu, { left: contextMenu.x, top: contextMenu.y }]}>
+            {contextMenu.canRecall && (
+              <TouchableOpacity
+                style={overlayStyles.menuItem}
+                onPress={() => handleRecall(contextMenu.item, contextMenu.index)}
+                activeOpacity={0.6}
+              >
+                <Text style={overlayStyles.menuItemText}>撤回</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={overlayStyles.menuItem}
+              onPress={() => handleDelete(contextMenu.item, contextMenu.index)}
+              activeOpacity={0.6}
+            >
+              <Text style={[overlayStyles.menuItemText, overlayStyles.menuItemDel]}>删除</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -235,4 +423,80 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.4 },
   sendBtnText: { ...typography.bodyBold, color: "#FFF" },
+});
+
+// ── 消息菜单样式 ──
+const menuStyles = StyleSheet.create({
+  msgRow: { position: "relative" },
+  menuBar: {
+    flexDirection: "row",
+    backgroundColor: "#2C2C2C",
+    borderRadius: borderRadius.md,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+    marginBottom: 4,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  menuBarMine: { alignSelf: "flex-end", marginRight: 58 },
+  menuBarOther: { alignSelf: "flex-start", marginLeft: 58 },
+  menuBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  menuBtnText: {
+    ...typography.caption,
+    color: "#FFF",
+    fontWeight: "700",
+  },
+  menuBtnDel: {
+    color: "#FF6B6B",
+  },
+  menuSep: {
+    width: 1,
+    backgroundColor: "#555",
+    marginVertical: 4,
+  },
+});
+
+// ── Web 端浮层菜单样式（position:fixed 避免被 FlatList 裁剪） ──
+const overlayStyles = StyleSheet.create({
+  backdrop: {
+    position: "fixed" as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9998,
+  },
+  menu: {
+    position: "fixed" as any,
+    zIndex: 9999,
+    flexDirection: "row",
+    backgroundColor: "#2C2C2C",
+    borderRadius: borderRadius.md,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  menuItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    cursor: "pointer",
+  },
+  menuItemText: {
+    ...typography.caption,
+    color: "#FFF",
+    fontWeight: "700",
+  } as any,
+  menuItemDel: {
+    color: "#FF6B6B",
+  } as any,
 });

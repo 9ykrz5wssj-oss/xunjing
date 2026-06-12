@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Animated,
+  View, Text, StyleSheet, TouchableOpacity, SectionList,
+  RefreshControl, ActivityIndicator,
 } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { CollectionCard } from "../../components/CollectionCard";
@@ -12,13 +12,21 @@ import { CollectionItem } from "../../types";
 
 const RARITY_ORDER = ["典藏", "神秘", "限定", "高端", "普通", "常见"];
 
+/** 每行最多3张卡片 */
+function chunkRows(items: CollectionItem[]): CollectionItem[][] {
+  const rows: CollectionItem[][] = [];
+  for (let i = 0; i < items.length; i += 3) {
+    rows.push(items.slice(i, i + 3));
+  }
+  return rows;
+}
+
 export function GalleryScreen({ navigation }: any) {
   const [grouped, setGrouped] = useState<Record<string, CollectionItem[]>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const sectionPositions = useRef<Record<string, number>>({});
+  const listRef = useRef<SectionList>(null);
 
   const fetchCollections = useCallback(async () => {
     try {
@@ -41,13 +49,23 @@ export function GalleryScreen({ navigation }: any) {
 
   const onRefresh = () => { setRefreshing(true); fetchCollections(); };
 
+  // 构建 SectionList 数据：每个 section = 一种稀有度，data = 行数组（每行最多3个）
+  const sections = RARITY_ORDER
+    .filter((r) => grouped[r]?.length > 0)
+    .map((rarity) => ({
+      rarity,
+      data: chunkRows(grouped[rarity]),
+    }));
+
   const scrollToRarity = (rarity: string) => {
     setSelectedRarity(rarity);
-    // 简单滚动到顶部，后续可做精确滚动
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    const idx = sections.findIndex((s) => s.rarity === rarity);
+    if (idx >= 0 && listRef.current) {
+      listRef.current.scrollToLocation({ sectionIndex: idx, itemIndex: 0, viewOffset: 0, animated: true });
+    }
   };
 
-  const availableRarities = RARITY_ORDER.filter((r) => grouped[r]?.length > 0);
+  const totalCount = Object.values(grouped).reduce((s, arr) => s + arr.length, 0);
 
   if (loading) {
     return (
@@ -58,7 +76,7 @@ export function GalleryScreen({ navigation }: any) {
     );
   }
 
-  if (availableRarities.length === 0) {
+  if (sections.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState emoji="🏛️" title="展柜空空的" subtitle="去地图探索，开启宝箱获得藏品吧！" />
@@ -71,7 +89,7 @@ export function GalleryScreen({ navigation }: any) {
       {/* ── 顶部标题 ── */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🏛️ 我的展柜</Text>
-        <Text style={styles.headerSub}>共 {Object.values(grouped).reduce((s, arr) => s + arr.length, 0)} 件藏品</Text>
+        <Text style={styles.headerSub}>共 {totalCount} 件藏品</Text>
       </View>
 
       {/* ── 左侧浮动标签栏 ── */}
@@ -97,48 +115,53 @@ export function GalleryScreen({ navigation }: any) {
         })}
       </View>
 
-      {/* ── 主内容区 ── */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+      {/* ── 虚拟化列表（只渲染可见区域的卡片） ── */}
+      <SectionList
+        ref={listRef as any}
+        sections={sections}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false}
+        keyExtractor={(row: CollectionItem[], idx) => `${row[0]?.collectionId || idx}-${idx}`}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
-      >
-        {RARITY_ORDER.map((rarity) => {
-          const items = grouped[rarity];
-          if (!items || items.length === 0) return null;
-          const color = RARITY_COLORS[rarity] || "#999";
-
+        renderSectionHeader={({ section }) => {
+          const color = RARITY_COLORS[section.rarity] || "#999";
+          const count = grouped[section.rarity]?.length || 0;
           return (
-            <View key={rarity} style={styles.section}>
-              {/* 分组标题 */}
-              <View style={[styles.sectionHeader, { backgroundColor: color + "12", borderLeftColor: color }]}>
-                <Text style={[styles.sectionTitle, { color }]}>
-                  {rarity === "神秘" ? "🌈 " : ""}{rarity}
-                </Text>
-                <Text style={styles.sectionCount}>{items.length} 件</Text>
-              </View>
-
-              {/* 网格布局 */}
-              <View style={styles.grid}>
-                {items.map((item) => (
-                  <CollectionCard
-                    key={item.collectionId}
-                    name={item.name}
-                    imageUrl={item.imageUrl}
-                    rarity={item.rarity}
-                    count={item.count}
-                    onPress={() => navigation.navigate("ItemDetail", { item })}
-                  />
-                ))}
-              </View>
+            <View style={[styles.sectionHeader, { backgroundColor: color + "12", borderLeftColor: color }]}>
+              <Text style={[styles.sectionTitle, { color }]}>
+                {section.rarity === "神秘" ? "🌈 " : ""}{section.rarity}
+              </Text>
+              <Text style={styles.sectionCount}>{count} 件</Text>
             </View>
           );
-        })}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
+        }}
+        renderItem={({ item: row }) => (
+          <View style={styles.row}>
+            {row.map((item) => (
+              <CollectionCard
+                key={item.collectionId}
+                name={item.name}
+                imageUrl={item.imageUrl}
+                thumbnailUrl={item.thumbnailUrl}
+                rarity={item.rarity}
+                count={item.count}
+                onPress={() => navigation.navigate("ItemDetail", { item })}
+              />
+            ))}
+            {/* 行尾补齐占位，保证卡片左对齐 */}
+            {row.length < 3 && (
+              <View style={{ width: row.length === 2 ? "31%" : "62%", marginBottom: 0 }} />
+            )}
+          </View>
+        )}
+        // 初始渲染足够的行以填满首屏（避免空白）
+        initialNumToRender={12}
+        maxToRenderPerBatch={9}
+        windowSize={5}
+        removeClippedSubviews={true}
+      />
     </View>
   );
 }
@@ -196,9 +219,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     writingDirection: "ltr",
   },
-  scrollView: { flex: 1, marginLeft: 36 },
-  scrollContent: { padding: spacing.md, paddingBottom: 120 },
-  section: { marginBottom: spacing.xl },
+  list: { flex: 1, marginLeft: 36 },
+  listContent: { padding: spacing.md, paddingBottom: 120 },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -208,13 +230,14 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderLeftWidth: 4,
     marginBottom: spacing.md,
+    marginTop: spacing.md,
   },
   sectionTitle: { ...typography.bodyBold, fontSize: 15 },
   sectionCount: { ...typography.caption, color: colors.textSecondary },
-  grid: {
+  row: {
     flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "flex-start",
     gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
 });

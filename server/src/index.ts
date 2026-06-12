@@ -28,6 +28,7 @@ import mapRoutes from "./routes/map.routes";
 import adminRoutes from "./routes/admin.routes";
 import uploadRoutes from "./routes/upload.routes";
 import geoRoutes from "./routes/geo.routes";
+import feedbackRoutes from "./routes/feedback.routes";
 import { getUserCollections } from "./controllers/item.controller";
 import { authMiddleware } from "./middleware/auth.middleware";
 
@@ -40,8 +41,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ── 静态文件（上传的图片） ──
+// UUID文件名 = 不可变资源，缓存365天，大幅提升展柜图片加载速度
 const uploadDir = process.env.UPLOAD_DIR || "./uploads";
-app.use("/uploads", express.static(path.resolve(uploadDir)));
+app.use(
+  "/uploads",
+  express.static(path.resolve(uploadDir), {
+    maxAge: "365d",
+    immutable: true,
+  })
+);
 
 // ── 健康检查 ──
 app.get("/api/health", (_req, res) => {
@@ -71,6 +79,7 @@ app.use("/api/v1/map", mapRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/upload", uploadRoutes);
 app.use("/api/v1/geo", geoRoutes);
+app.use("/api/v1/feedback", feedbackRoutes);
 
 // ── 网页静态文件（挂到3000端口，供流量访问） ──
 const webDir = path.resolve(__dirname, "../webdist");

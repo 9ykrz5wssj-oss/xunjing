@@ -5,6 +5,18 @@ export async function getEventTypes(): Promise<ApiResponse<EventTypeData[]>> {
   return api.get("/event-types");
 }
 
+/** 活动广场列表：支持状态/类型/关键词筛选 */
+export async function listEvents(params?: {
+  status?: string;
+  campus?: string;
+  typeId?: string;
+  keyword?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ApiResponse<{ events: any[]; total: number; page: number; limit: number }>> {
+  return api.get("/events", { params });
+}
+
 export async function createEvent(data: any): Promise<ApiResponse<EventData>> {
   return api.post("/events", data);
 }

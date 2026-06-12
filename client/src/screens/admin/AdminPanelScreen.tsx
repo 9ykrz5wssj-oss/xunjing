@@ -14,14 +14,22 @@ import {
   listEventTypes, createEventType, updateEventType, deleteEventType,
   getDashboard, giftItem,
 } from "../../services/admin.api";
+import { getAllFeedback, resolveFeedback, FeedbackItem } from "../../services/feedback.api";
 import api, { fixImageUrl } from "../../services/api";
 import { ItemDetail, EventTypeData } from "../../types";
 
 const RARITY_OPTIONS = ["典藏", "神秘", "限定", "高端", "普通", "常见"];
 
 export function AdminPanelScreen({ navigation }: any) {
-  const [tab, setTab] = useState<"items" | "eventTypes" | "dashboard" | "chests" | "campus">("dashboard");
+  const [tab, setTab] = useState<"items" | "eventTypes" | "dashboard" | "chests" | "campus" | "feedback">("dashboard");
   const [loading, setLoading] = useState(true);
+
+  // 反馈
+  const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
+  const [feedbackTotal, setFeedbackTotal] = useState(0);
+  const [feedbackFilter, setFeedbackFilter] = useState<"pending" | "resolved" | "all">("pending");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyContent, setReplyContent] = useState("");
 
   const [dashboard, setDashboard] = useState({ totalUsers: 0, activeChests: 0, activeEvents: 0 });
   const [chestType, setChestType] = useState("normal");
@@ -122,8 +130,16 @@ export function AdminPanelScreen({ navigation }: any) {
         const dropRes = await api.get("/admin/drop-config");
         if (dropRes && (dropRes as any).success) setDropConfig((dropRes as any).data || { normal: {}, advanced: {} });
       } catch {}
+      // 拉取反馈
+      try {
+        const fbRes = await getAllFeedback(1, 100, feedbackFilter === "all" ? undefined : feedbackFilter);
+        if (fbRes.success && fbRes.data) {
+          setFeedbacks(fbRes.data.items);
+          setFeedbackTotal(fbRes.data.total);
+        }
+      } catch {}
     } catch {} finally { setLoading(false); }
-  }, []);
+  }, [feedbackFilter]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -245,6 +261,7 @@ export function AdminPanelScreen({ navigation }: any) {
           { key: "eventTypes" as const, label: "🏷️ 类型" },
           { key: "chests" as const, label: "📦 宝箱" },
           { key: "campus" as const, label: "🗺️ 校区" },
+          { key: "feedback" as const, label: "📮 反馈" },
         ].map((t) => (
           <TouchableOpacity key={t.key} style={[styles.tab, tab === t.key && styles.tabActive]} onPress={() => setTab(t.key)}>
             <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>{t.label}</Text>
@@ -644,6 +661,132 @@ export function AdminPanelScreen({ navigation }: any) {
         </ScrollView>
       )}
 
+      {/* 反馈列表 */}
+      {tab === "feedback" && (
+        <View style={{ flex: 1 }}>
+          {/* 筛选 */}
+          <View style={styles.feedbackFilterRow}>
+            {(["pending", "resolved", "all"] as const).map((f) => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.feedbackFilterBtn, feedbackFilter === f && styles.feedbackFilterBtnActive]}
+                onPress={() => setFeedbackFilter(f)}
+              >
+                <Text style={[styles.feedbackFilterText, feedbackFilter === f && styles.feedbackFilterTextActive]}>
+                  {f === "pending" ? "⏳ 待处理" : f === "resolved" ? "✅ 已处理" : "📋 全部"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <FlatList
+            data={feedbacks}
+            keyExtractor={(item) => item._id}
+            renderItem={({ item }) => {
+              const user = item.userId;
+              const isReplying = replyingTo === item._id;
+              return (
+                <View style={[styles.feedbackCard, item.status === "resolved" && { opacity: 0.75 }]}>
+                  <View style={styles.feedbackCardHeader}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                      <Text style={styles.feedbackUserIcon}>👤</Text>
+                      <View>
+                        <Text style={styles.feedbackUserName}>{user?.nickname || "未知用户"}</Text>
+                        <Text style={styles.feedbackUserMeta}>
+                          ID: {user?.userId || "?"} · {user?.email || ""}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                      <Text style={styles.feedbackDate}>
+                        {new Date(item.createdAt).toLocaleString("zh-CN", {
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </Text>
+                      <View style={[styles.fbStatusBadge, { backgroundColor: item.status === "pending" ? colors.warning + "20" : colors.success + "20" }]}>
+                        <Text style={[styles.fbStatusText, { color: item.status === "pending" ? colors.warning : colors.success }]}>
+                          {item.status === "pending" ? "待处理" : "已处理"}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={styles.feedbackContent}>{item.content}</Text>
+
+                  {item.adminReply ? (
+                    <View style={styles.fbReplyBox}>
+                      <Text style={styles.fbReplyLabel}>👑 我的回复：</Text>
+                      <Text style={styles.fbReplyContent}>{item.adminReply}</Text>
+                    </View>
+                  ) : null}
+
+                  {item.status === "pending" && (
+                    <>
+                      {isReplying ? (
+                        <View style={styles.fbReplyInputWrap}>
+                          <TextInput
+                            style={styles.fbReplyInput}
+                            placeholder="输入回复内容（可选）..."
+                            placeholderTextColor={colors.textHint}
+                            value={replyContent}
+                            onChangeText={setReplyContent}
+                            multiline
+                          />
+                          <View style={styles.fbReplyBtns}>
+                            <TouchableOpacity
+                              style={styles.fbCancelBtn}
+                              onPress={() => { setReplyingTo(null); setReplyContent(""); }}
+                            >
+                              <Text style={styles.fbCancelBtnText}>取消</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.fbResolveSmallBtn}
+                              onPress={async () => {
+                                try {
+                                  await resolveFeedback(item._id, { status: "resolved", adminReply: replyContent.trim() });
+                                  Alert.alert("✅", "已标记为已处理");
+                                  setReplyingTo(null); setReplyContent("");
+                                  fetchAll();
+                                } catch (e: any) { Alert.alert("失败", e?.error || ""); }
+                              }}
+                            >
+                              <Text style={styles.fbResolveSmallText}>确认处理</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.fbResolveBtn}
+                          onPress={() => setReplyingTo(item._id)}
+                        >
+                          <Text style={styles.fbResolveBtnText}>✅ 标记为已处理</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+
+                  {item.resolvedBy && (
+                    <Text style={styles.fbResolvedMeta}>
+                      由 {(item.resolvedBy as any)?.nickname || "管理员"} 处理于{" "}
+                      {item.resolvedAt
+                        ? new Date(item.resolvedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+                        : ""}
+                    </Text>
+                  )}
+                </View>
+              );
+            }}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <EmptyState emoji="📭" title="暂无反馈" subtitle={feedbackFilter === "pending" ? "所有反馈都已处理" : "还没有用户提交反馈"} />
+            }
+          />
+        </View>
+      )}
+
       {/* 活动类型列表 */}
       {tab === "eventTypes" && (
         <>
@@ -877,4 +1020,48 @@ const styles = StyleSheet.create({
   colorDot: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: "transparent" },
   colorDotSelected: { borderColor: "#000", transform: [{ scale: 1.2 }] },
   colorPreview: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: colors.border },
+  // 反馈样式
+  feedbackFilterRow: { flexDirection: "row", paddingHorizontal: spacing.md, gap: spacing.sm, marginBottom: spacing.sm },
+  feedbackFilterBtn: { flex: 1, backgroundColor: colors.surface, borderRadius: borderRadius.lg, paddingVertical: spacing.sm, alignItems: "center", borderWidth: 1.5, borderColor: colors.border },
+  feedbackFilterBtnActive: { borderColor: colors.primary, backgroundColor: colors.primary + "10" },
+  feedbackFilterText: { ...typography.caption, fontWeight: "600", color: colors.textSecondary },
+  feedbackFilterTextActive: { color: colors.primary },
+  feedbackCard: {
+    backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.lg,
+    marginBottom: spacing.sm, marginHorizontal: spacing.md,
+  },
+  feedbackCardHeader: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
+    marginBottom: spacing.sm,
+  },
+  feedbackUserIcon: { fontSize: 28 },
+  feedbackUserName: { ...typography.bodyBold, color: colors.textPrimary },
+  feedbackUserMeta: { ...typography.small, color: colors.textHint, fontSize: 10 },
+  feedbackDate: { ...typography.small, color: colors.textHint },
+  fbStatusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: borderRadius.full },
+  fbStatusText: { ...typography.small, fontWeight: "700", fontSize: 10 },
+  feedbackContent: { ...typography.body, color: colors.textPrimary, lineHeight: 22, marginBottom: spacing.sm },
+  fbReplyBox: {
+    backgroundColor: colors.success + "10", borderRadius: borderRadius.md, padding: spacing.md,
+    borderLeftWidth: 3, borderLeftColor: colors.success, marginBottom: spacing.sm,
+  },
+  fbReplyLabel: { ...typography.caption, fontWeight: "700", color: colors.success, marginBottom: spacing.xs },
+  fbReplyContent: { ...typography.body, color: colors.textPrimary },
+  fbReplyInputWrap: { marginTop: spacing.sm },
+  fbReplyInput: {
+    backgroundColor: colors.background, borderRadius: borderRadius.md, borderWidth: 1,
+    borderColor: colors.border, padding: spacing.md, ...typography.body, color: colors.textPrimary,
+    minHeight: 60, marginBottom: spacing.sm,
+  },
+  fbReplyBtns: { flexDirection: "row", gap: spacing.sm },
+  fbCancelBtn: { flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: borderRadius.lg, paddingVertical: spacing.sm, alignItems: "center" },
+  fbCancelBtnText: { ...typography.caption, fontWeight: "600", color: colors.textSecondary },
+  fbResolveSmallBtn: { flex: 1, backgroundColor: colors.success, borderRadius: borderRadius.lg, paddingVertical: spacing.sm, alignItems: "center" },
+  fbResolveSmallText: { ...typography.caption, fontWeight: "700", color: "#FFF" },
+  fbResolveBtn: {
+    backgroundColor: colors.success + "15", borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm, alignItems: "center", borderWidth: 1.5, borderColor: colors.success + "50",
+  },
+  fbResolveBtnText: { ...typography.caption, fontWeight: "700", color: colors.success },
+  fbResolvedMeta: { ...typography.small, color: colors.textHint, marginTop: spacing.sm, fontStyle: "italic" },
 });

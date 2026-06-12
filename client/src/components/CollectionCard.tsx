@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../theme";
 import { RARITY_COLORS } from "../utils/constants";
@@ -7,14 +7,18 @@ import { fixImageUrl } from "../services/api";
 interface CollectionCardProps {
   name: string;
   imageUrl: string;
+  thumbnailUrl?: string;
   rarity: string;
   count: number;
   onPress?: () => void;
   disabled?: boolean;
 }
 
-export function CollectionCard({ name, imageUrl, rarity, count, onPress, disabled }: CollectionCardProps) {
+export function CollectionCard({ name, imageUrl, thumbnailUrl, rarity, count, onPress, disabled }: CollectionCardProps) {
   const rarityColor = RARITY_COLORS[rarity] || "#999";
+  // 缩略图加载失败时降级为原图（兼容旧图片无缩略图的情况）
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const displayUrl = (!thumbFailed && thumbnailUrl) ? thumbnailUrl : imageUrl;
 
   const card = (
     <View style={[styles.card, { borderColor: rarityColor + "40" }]}>
@@ -23,10 +27,15 @@ export function CollectionCard({ name, imageUrl, rarity, count, onPress, disable
         <Text style={styles.countText}>x{count}</Text>
       </View>
 
-      {/* 图片 */}
+      {/* 图片 — 优先用缩略图快速展示 */}
       <View style={styles.imageWrap}>
-        {imageUrl ? (
-          <Image source={{ uri: fixImageUrl(imageUrl) }} style={styles.image} resizeMode="contain" />
+        {displayUrl ? (
+          <Image
+            source={{ uri: fixImageUrl(displayUrl) }}
+            style={styles.image}
+            resizeMode="contain"
+            onError={() => setThumbFailed(true)}
+          />
         ) : (
           <Text style={styles.placeholderEmoji}>🎁</Text>
         )}

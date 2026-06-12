@@ -10,9 +10,10 @@ interface MessageBubbleProps {
   senderAvatar: string;
   timestamp: string;
   showAvatar: boolean;
+  isRevoked?: boolean;
 }
 
-export function MessageBubble({ content, isMine, senderNickname, senderAvatar, timestamp, showAvatar }: MessageBubbleProps) {
+export function MessageBubble({ content, isMine, senderNickname, senderAvatar, timestamp, showAvatar, isRevoked }: MessageBubbleProps) {
   const timeStr = new Date(timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
   return (
@@ -33,8 +34,10 @@ export function MessageBubble({ content, isMine, senderNickname, senderAvatar, t
         {!isMine && showAvatar && (
           <Text style={styles.senderName}>{senderNickname || "用户"}</Text>
         )}
-        <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
-          <Text style={[styles.text, isMine ? styles.textMine : styles.textOther]}>{content}</Text>
+        <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther, isRevoked && styles.bubbleRevoked]}>
+          <Text style={[styles.text, isMine ? styles.textMine : styles.textOther, isRevoked && styles.textRevoked]}>
+            {isRevoked ? "⏪ 消息已撤回" : content}
+          </Text>
         </View>
         <Text style={[styles.time, isMine && styles.timeMine]}>{timeStr}</Text>
       </View>
@@ -124,5 +127,16 @@ const styles = StyleSheet.create({
   },
   timeMine: {
     textAlign: "right",
+  },
+  bubbleRevoked: {
+    backgroundColor: colors.surfaceAlt || colors.background,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    borderStyle: "dashed",
+  },
+  textRevoked: {
+    color: colors.textHint,
+    fontStyle: "italic",
+    fontSize: 13,
   },
 });

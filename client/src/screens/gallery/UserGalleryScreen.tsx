@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, SectionList, ActivityIndicator } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { CollectionCard } from "../../components/CollectionCard";
 import { EmptyState } from "../../components/EmptyState";
@@ -7,6 +7,14 @@ import { RARITY_COLORS } from "../../utils/constants";
 import { getUserCollections } from "../../services/collection.api";
 
 const RARITY_ORDER = ["典藏", "神秘", "限定", "高端", "普通", "常见"];
+
+function chunkRows(items: any[]): any[][] {
+  const rows: any[][] = [];
+  for (let i = 0; i < items.length; i += 3) {
+    rows.push(items.slice(i, i + 3));
+  }
+  return rows;
+}
 
 export function UserGalleryScreen({ route, navigation }: any) {
   const { userId, nickname } = route.params;
@@ -31,11 +39,16 @@ export function UserGalleryScreen({ route, navigation }: any) {
     })();
   }, [userId]);
 
+  const sections = RARITY_ORDER
+    .filter((r) => grouped[r]?.length > 0)
+    .map((rarity) => ({
+      rarity,
+      data: chunkRows(grouped[rarity]),
+    }));
+
   if (loading) {
     return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>;
   }
-
-  const available = RARITY_ORDER.filter((r) => grouped[r]?.length > 0);
 
   return (
     <View style={styles.container}>
@@ -45,29 +58,41 @@ export function UserGalleryScreen({ route, navigation }: any) {
         <Text style={styles.subtitle}>共 {total} 件藏品</Text>
       </View>
 
-      {available.length === 0 ? (
+      {sections.length === 0 ? (
         <EmptyState emoji="🏛️" title="TA还没有藏品" subtitle="好友还没开始收集藏品" />
       ) : (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {RARITY_ORDER.map((rarity) => {
-            const items = grouped[rarity];
-            if (!items || items.length === 0) return null;
+        <SectionList
+          sections={sections}
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
+          keyExtractor={(row: any[], idx) => `${row[0]?.itemId || idx}-${idx}`}
+          initialNumToRender={12}
+          maxToRenderPerBatch={9}
+          windowSize={5}
+          removeClippedSubviews={true}
+          renderSectionHeader={({ section }) => {
+            const color = RARITY_COLORS[section.rarity] || "#999";
+            const count = grouped[section.rarity]?.length || 0;
             return (
-              <View key={rarity} style={styles.section}>
-                <View style={[styles.sectionHeader, { borderLeftColor: RARITY_COLORS[rarity] || "#999", backgroundColor: (RARITY_COLORS[rarity] || "#999") + "12" }]}>
-                  <Text style={[styles.sectionTitle, { color: RARITY_COLORS[rarity] || "#999" }]}>{rarity}</Text>
-                  <Text style={styles.sectionCount}>{items.length} 件</Text>
-                </View>
-                <View style={styles.grid}>
-                  {items.map((item: any, idx: number) => (
-                    <CollectionCard key={idx} name={item.name} imageUrl={item.imageUrl} rarity={item.rarity} count={item.count} disabled />
-                  ))}
-                </View>
+              <View style={[styles.sectionHeader, { borderLeftColor: color, backgroundColor: color + "12" }]}>
+                <Text style={[styles.sectionTitle, { color }]}>{section.rarity}</Text>
+                <Text style={styles.sectionCount}>{count} 件</Text>
               </View>
             );
-          })}
-          <View style={{ height: 100 }} />
-        </ScrollView>
+          }}
+          renderItem={({ item: row }) => (
+            <View style={styles.row}>
+              {row.map((item: any, idx: number) => (
+                <CollectionCard key={idx} name={item.name} imageUrl={item.imageUrl} thumbnailUrl={item.thumbnailUrl} rarity={item.rarity} count={item.count} disabled />
+              ))}
+              {row.length < 3 && (
+                <View style={{ width: row.length === 2 ? "31%" : "62%", marginBottom: 0 }} />
+              )}
+            </View>
+          )}
+        />
       )}
     </View>
   );
@@ -84,15 +109,19 @@ const styles = StyleSheet.create({
   backText: { ...typography.body, color: colors.primary, fontWeight: "600", marginBottom: spacing.md },
   title: { ...typography.h2, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
-  scroll: { flex: 1 },
-  scrollContent: { padding: spacing.md },
-  section: { marginBottom: spacing.lg },
+  list: { flex: 1 },
+  listContent: { padding: spacing.md, paddingBottom: 120 },
   sectionHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md, borderLeftWidth: 4, marginBottom: spacing.sm,
+    borderRadius: borderRadius.md, borderLeftWidth: 4, marginBottom: spacing.sm, marginTop: spacing.md,
   },
   sectionTitle: { ...typography.bodyBold, fontSize: 15 },
   sectionCount: { ...typography.caption, color: colors.textSecondary },
-  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: spacing.sm },
+  row: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
 });

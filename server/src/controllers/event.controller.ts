@@ -11,6 +11,51 @@ import { getIO } from "../socket";
 import { logger } from "../utils/logger";
 
 /**
+ * GET /api/v1/events
+ * 活动广场接口：支持状态/类型/关键词筛选
+ */
+export async function listEvents(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { status, campus, typeId, keyword, page = "1", limit = "30" } = req.query;
+    const filter: any = {};
+
+    if (status) {
+      filter.status = status;
+    } else {
+      // 默认返回招募中和进行中的活动
+      filter.status = { $in: [ActivityStatus.RECRUITING, ActivityStatus.ONGOING] };
+    }
+    if (campus) filter.campus = campus;
+    if (typeId) filter.typeId = typeId;
+    if (keyword) {
+      filter.$or = [
+        { title: { $regex: keyword as string, $options: "i" } },
+        { description: { $regex: keyword as string, $options: "i" } },
+        { locationText: { $regex: keyword as string, $options: "i" } },
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 30));
+
+    const [events, total] = await Promise.all([
+      Event.find(filter)
+        .populate("typeId", "name iconUrl color")
+        .populate("hostId", "nickname avatar userId")
+        .sort({ startTime: 1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      Event.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, data: { events, total, page: pageNum, limit: limitNum } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
  * POST /api/v1/events
  * 创建招募活动
  */
@@ -77,13 +122,17 @@ export async function getMyEvents(req: AuthRequest, res: Response): Promise<void
       .populate({ path: "eventId", populate: { path: "typeId" } })
       .sort({ appliedAt: -1 });
 
-    const events = participants.map((p) => ({
-      participantRecord: {
-        role: p.role,
-        status: p.status,
-      },
-      event: p.eventId,
-    }));
+    // 过滤已删除的活动（populate 返回 null），展开 event 并附带参与信息
+    const events = participants
+      .filter((p) => p.eventId != null)
+      .map((p) => {
+        const eventObj = p.eventId as any;
+        return {
+          ...(eventObj._doc || eventObj),
+          myRole: p.role,
+          myStatus: p.status,
+        };
+      });
 
     res.json({ success: true, data: events });
   } catch (error: any) {

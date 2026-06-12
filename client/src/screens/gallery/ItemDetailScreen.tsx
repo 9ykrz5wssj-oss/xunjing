@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Animated } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { RarityBadge } from "../../components/RarityBadge";
 import { RARITY_COLORS } from "../../utils/constants";
@@ -9,6 +9,11 @@ export function ItemDetailScreen({ route, navigation }: any) {
   const { item } = route.params;
   const rarityColor = RARITY_COLORS[item.rarity] || "#999";
   const isMythic = item.rarity === "神秘";
+
+  // 渐进加载：先展示缩略图（秒开），原图加载完成后切换
+  const [fullLoaded, setFullLoaded] = useState(false);
+  const thumbUri = item.thumbnailUrl ? fixImageUrl(item.thumbnailUrl) : null;
+  const fullUri = item.imageUrl ? fixImageUrl(item.imageUrl) : null;
 
   return (
     <View style={styles.container}>
@@ -22,11 +27,23 @@ export function ItemDetailScreen({ route, navigation }: any) {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 大图展示 */}
+        {/* 大图展示 — 先缩略图再原图 */}
         <View style={[styles.imageContainer, { borderColor: rarityColor + "30", backgroundColor: rarityColor + "08" }]}>
           {isMythic && <View style={styles.rainbowOverlay} />}
-          {item.imageUrl ? (
-            <Image source={{ uri: fixImageUrl(item.imageUrl) }} style={styles.image} resizeMode="contain" />
+          {fullUri ? (
+            <View style={styles.imageStack}>
+              {/* 缩略图 — 瞬间展示，原图到后隐藏 */}
+              {thumbUri && !fullLoaded && (
+                <Image source={{ uri: thumbUri }} style={styles.stackImage} resizeMode="contain" />
+              )}
+              {/* 原图 — 加载完成后淡入 */}
+              <Image
+                source={{ uri: fullUri }}
+                style={[styles.stackImage, { opacity: fullLoaded ? 1 : 0 }]}
+                resizeMode="contain"
+                onLoad={() => setFullLoaded(true)}
+              />
+            </View>
           ) : (
             <Text style={styles.placeholderText}>🎁</Text>
           )}
@@ -111,7 +128,18 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "transparent",
   },
-  image: { width: "75%", height: "75%" },
+  imageStack: {
+    width: "75%",
+    height: "75%",
+    position: "relative",
+  },
+  stackImage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   placeholderText: { fontSize: 80 },
   raritySection: { alignItems: "center", marginBottom: spacing.md },
   itemName: { ...typography.h2, color: colors.textPrimary, textAlign: "center", marginBottom: spacing.md },

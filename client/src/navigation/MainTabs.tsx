@@ -18,15 +18,15 @@ import { ChatScreen } from "../screens/friends/ChatScreen";
 import { UserGalleryScreen } from "../screens/gallery/UserGalleryScreen";
 import { PublishEventScreen } from "../screens/publish/PublishEventScreen";
 import { MapPickerScreen } from "../screens/publish/MapPickerScreen";
-import { LogFeedScreen } from "../screens/log/LogFeedScreen";
+import { FeedbackScreen } from "../screens/profile/FeedbackScreen";
 import { GroupChatScreen } from "../screens/log/GroupChatScreen";
 import { ActivitySquareScreen } from "../screens/log/ActivitySquareScreen";
-import { ActivityTypeListScreen } from "../screens/log/ActivityTypeListScreen";
+import { LogFeedScreen } from "../screens/log/LogFeedScreen";
 
 export type MainTabParamList = {
   FriendsTab: undefined;
-  LogTab: undefined;
   PublishTab: undefined;
+  SquareTab: undefined;
   MapTab: undefined;
   GalleryTab: undefined;
   ProfileTab: undefined;
@@ -56,18 +56,6 @@ function FriendsStack() {
   );
 }
 
-const LogStackNav = createStackNavigator();
-function LogStack() {
-  return (
-    <LogStackNav.Navigator screenOptions={{ headerShown: false }}>
-      <LogStackNav.Screen name="LogMain" component={LogFeedScreen} />
-      <LogStackNav.Screen name="EventDetail" component={EventDetailScreen} />
-      <LogStackNav.Screen name="GroupChat" component={GroupChatScreen} />
-      <LogStackNav.Screen name="UserGallery" component={UserGalleryScreen} />
-    </LogStackNav.Navigator>
-  );
-}
-
 const PublishStackNav = createStackNavigator();
 function PublishStack() {
   return (
@@ -75,6 +63,18 @@ function PublishStack() {
       <PublishStackNav.Screen name="PublishMain" component={PublishEventScreen} />
       <PublishStackNav.Screen name="MapPicker" component={MapPickerScreen} />
     </PublishStackNav.Navigator>
+  );
+}
+
+const SquareStackNav = createStackNavigator();
+function SquareStack() {
+  return (
+    <SquareStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <SquareStackNav.Screen name="SquareMain" component={ActivitySquareScreen} />
+      <SquareStackNav.Screen name="EventDetail" component={EventDetailScreen} />
+      <SquareStackNav.Screen name="GroupChat" component={GroupChatScreen} />
+      <SquareStackNav.Screen name="UserGallery" component={UserGalleryScreen} />
+    </SquareStackNav.Navigator>
   );
 }
 
@@ -86,8 +86,6 @@ function MapStack() {
       <MapStackNav.Screen name="EventDetail" component={EventDetailScreen} />
       <MapStackNav.Screen name="GroupChat" component={GroupChatScreen} />
       <MapStackNav.Screen name="UserGallery" component={UserGalleryScreen} />
-      <MapStackNav.Screen name="ActivitySquare" component={ActivitySquareScreen} />
-      <MapStackNav.Screen name="ActivityTypeList" component={ActivityTypeListScreen} />
     </MapStackNav.Navigator>
   );
 }
@@ -99,6 +97,11 @@ function ProfileStack() {
       <ProfileStackNav.Screen name="ProfileMain" component={ProfileScreen} />
       <ProfileStackNav.Screen name="AdminPanel" component={AdminPanelScreen} />
       <ProfileStackNav.Screen name="MapPicker" component={MapPickerScreen} />
+      <ProfileStackNav.Screen name="Feedback" component={FeedbackScreen} />
+      <ProfileStackNav.Screen name="LogFeed" component={LogFeedScreen} />
+      <ProfileStackNav.Screen name="EventDetail" component={EventDetailScreen} />
+      <ProfileStackNav.Screen name="GroupChat" component={GroupChatScreen} />
+      <ProfileStackNav.Screen name="UserGallery" component={UserGalleryScreen} />
     </ProfileStackNav.Navigator>
   );
 }
@@ -107,7 +110,7 @@ function ProfileStack() {
 const TabIcon = ({ label, emoji, focused }: { label: string; emoji: string; focused: boolean }) => (
   <View style={styles.tabIcon}>
     <Text style={[styles.emoji, focused && styles.emojiActive]}>{emoji}</Text>
-    <Text style={[styles.label, focused && styles.labelActive]}>{label}</Text>
+    <Text style={[styles.label, focused && styles.labelActive]} numberOfLines={1}>{label}</Text>
   </View>
 );
 
@@ -140,10 +143,10 @@ export function MainTabs() {
     >
       <Tab.Screen name="FriendsTab" component={FriendsStack}
         options={{ tabBarIcon: ({ focused }) => <TabIcon label="好友" emoji="🤝" focused={focused} /> }} />
-      <Tab.Screen name="LogTab" component={LogStack}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon label="日志" emoji="📖" focused={focused} /> }} />
       <Tab.Screen name="PublishTab" component={PublishStack}
         options={{ tabBarIcon: ({ focused }) => <TabIcon label="发布" emoji="📝" focused={focused} /> }} />
+      <Tab.Screen name="SquareTab" component={SquareStack}
+        options={{ tabBarIcon: ({ focused }) => <TabIcon label="活动广场" emoji="🎪" focused={focused} /> }} />
       <Tab.Screen name="MapTab" component={MapStack}
         options={{ tabBarIcon: ({ focused }) => <TabIcon label="地图" emoji="📍" focused={focused} /> }} />
       <Tab.Screen name="GalleryTab" component={GalleryStack}
@@ -170,9 +173,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
   },
-  tabIcon: { alignItems: "center", justifyContent: "center" },
+  tabIcon: { alignItems: "center", justifyContent: "center", maxWidth: 72 },
   emoji: { fontSize: 22, opacity: 0.5 },
   emojiActive: { opacity: 1, transform: [{ scale: 1.15 }] },
-  label: { fontSize: 10, marginTop: 2, color: colors.tabInactive, fontWeight: "500" },
+  label: { fontSize: 10, marginTop: 2, color: colors.tabInactive, fontWeight: "500", textAlign: "center" },
   labelActive: { color: colors.tabActive, fontWeight: "700" },
 });

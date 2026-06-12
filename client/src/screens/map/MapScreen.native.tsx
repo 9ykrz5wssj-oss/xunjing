@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform } from "react-native";
 import md5 from "md5";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 
 let WebView: any = () => null;
 let NativeModules: any = null;
@@ -15,6 +15,14 @@ import { Campus, CAMPUS_NAMES } from "../../utils/constants";
 import { getActiveChests } from "../../services/chest.api";
 import { getSocket, getCurrentSocket } from "../../socket/socketClient";
 import api, { fixImageUrl } from "../../services/api";
+import {
+  getCachedLocation,
+  setCachedLocation,
+  getCachedChests,
+  setCachedChests,
+  getCachedEvents,
+  setCachedEvents,
+} from "../../utils/mapCache";
 
 const CAMPUS_CENTERS: Record<Campus, { lng: number; lat: number; zoom: number }> = {
   gulou: { lng: 118.7750, lat: 32.0575, zoom: 16 },
@@ -38,9 +46,30 @@ export function MapScreen() {
   const [openResult, setOpenResult] = useState<{ success: boolean; error?: string; item?: any; rarity?: string } | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [nearbyCounts, setNearbyCounts] = useState<Record<string, number>>({});
+  const [initialCenter, setInitialCenter] = useState<{ lat: number; lng: number; zoom: number } | null>(null);
   const socketRef = useRef<any>(null);
-  const [showCampusModal, setShowCampusModal] = useState(false);
   const wv = useRef<WebView>(null);
+  const isFirstFocusRef = useRef(true);
+
+  // ═══ 预加载缓存 ═══
+  useEffect(() => {
+    (async () => {
+      const loc = await getCachedLocation();
+      if (loc) {
+        if (loc.campus !== Campus.GULOU) setCampus(loc.campus);
+        setInitialCenter({ lat: loc.lat, lng: loc.lng, zoom: 16 });
+      }
+      // 预载宝箱和活动缓存
+      const campusKey = loc?.campus || Campus.GULOU;
+      const [ch, ev] = await Promise.all([
+        getCachedChests(campusKey),
+        getCachedEvents(campusKey),
+      ]);
+      if (ch) { setChests(ch.data.chests); setCooldowns(ch.data.cooldowns); }
+      if (ev) { setEvents(ev.data); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 自定义高德原生定位
   useEffect(() => {
@@ -54,6 +83,7 @@ export function MapScreen() {
     const sub = DeviceEventEmitter.addListener("AMapLocation", (data: any) => {
       update(data.latitude, data.longitude);
       setUserLocation({ lat: data.latitude, lng: data.longitude });
+      setCachedLocation({ lat: data.latitude, lng: data.longitude, campus });
       const s = getCurrentSocket();
       if (s?.connected) {
         s.emit("location_update", { lat: data.latitude, lng: data.longitude, campus });
@@ -63,18 +93,64 @@ export function MapScreen() {
     return () => { sub.remove(); module.stop(); };
   }, []);
 
+  // 缓存位置就绪后，若 WebView 已就绪 → 直接定位
+  useEffect(() => {
+    if (initialCenter && wv.current && mapState === "ready") {
+      wv.current.postMessage(JSON.stringify({
+        type: "moveTo",
+        lat: initialCenter.lat,
+        lng: initialCenter.lng,
+        zoom: initialCenter.zoom,
+      }));
+    }
+  }, [initialCenter, mapState]);
+
   const fetchAll = useCallback(async () => {
     try {
       const [cR, eR] = await Promise.all([getActiveChests(campus), api.get("/map/activity-pins", { params: { campus } })]);
-      if (cR.success && cR.data) { setChests(cR.data); setCooldowns((cR as any).cooldowns || {normal:0,advanced:0}); };
-      if (eR && (eR as any).success) setEvents((eR as any).data || []);
+      const chestData = cR.data || [];
+      const cooldownData = (cR as any).cooldowns || { normal: 0, advanced: 0 };
+      const eventData = (eR as any)?.data || [];
+
+      if (cR.success && cR.data) { setChests(chestData); setCooldowns(cooldownData);
+        setCachedChests(campus, { chests: chestData, cooldowns: cooldownData });
+      }
+      if (eR && (eR as any).success) { setEvents(eventData);
+        setCachedEvents(campus, eventData);
+      }
       if (wv.current && mapState === "ready") {
-        wv.current.postMessage(JSON.stringify({ type: "updateMarkers", chests: cR.data || [], events: (eR as any)?.data || [] }));
+        wv.current.postMessage(JSON.stringify({ type: "updateMarkers", chests: chestData, events: eventData }));
       }
     } catch {}
   }, [campus, mapState]);
 
   useEffect(() => { fetchAll(); const t = setInterval(fetchAll, 20000); return () => clearInterval(t); }, [fetchAll]);
+
+  // ═══ Tab 切回优化 ═══
+  useFocusEffect(useCallback(() => {
+    if (isFirstFocusRef.current) { isFirstFocusRef.current = false; return; }
+    (async () => {
+      const cachedCh = await getCachedChests(campus);
+      const cachedEv = await getCachedEvents(campus);
+      const now = Date.now();
+      const fresh = (cachedCh && (now - cachedCh.timestamp) < 30000) &&
+                    (cachedEv && (now - cachedEv.timestamp) < 30000);
+      if (fresh) return;
+      if (cachedCh) {
+        setChests(cachedCh.data.chests);
+        setCooldowns(cachedCh.data.cooldowns);
+      }
+      if (cachedEv) { setEvents(cachedEv.data); }
+      if (wv.current && mapState === "ready") {
+        wv.current.postMessage(JSON.stringify({
+          type: "updateMarkers",
+          chests: cachedCh?.data.chests || [],
+          events: cachedEv?.data || [],
+        }));
+      }
+      fetchAll();
+    })();
+  }, [campus, fetchAll, mapState]));
 
   // Socket 监听：开箱结果 & 附近人数
   useEffect(() => {
@@ -112,7 +188,7 @@ export function MapScreen() {
   const handleMsg = (e: any) => {
     try {
       const d = JSON.parse(e.nativeEvent.data);
-      if (d.type === "mapReady") { setMapState("ready"); const ct = CAMPUS_CENTERS[campus]; wv.current?.postMessage(JSON.stringify({ type: "init", lng: ct.lng, lat: ct.lat, zoom: ct.zoom, chests, events })); }
+      if (d.type === "mapReady") { setMapState("ready"); const ct = initialCenter || CAMPUS_CENTERS[campus]; wv.current?.postMessage(JSON.stringify({ type: "init", lng: ct.lng, lat: ct.lat, zoom: ct.zoom, chests, events })); }
       if (d.type === "mapError") setMapState("failed");
       if (d.type === "chestClick") { const c = chests.find((x: any) => x._id === d.chestId); if (c) { setDialogData({ type: c.type === "advanced" ? "advancedChest" : "normalChest", data: { ...c, label: d.label } }); setDialogVisible(true); } }
       if (d.type === "eventClick") { const ev = events.find((x: any) => x._id === d.eventId); if (ev) { setDialogData({ type: "event", data: ev }); setDialogVisible(true); } }
@@ -299,7 +375,12 @@ export function MapScreen() {
 <div id="map"></div><div class="loader" id="ldr"><div class="s"></div>加载地图</div>
 <script>
 var map, cl, ud, wId;
-var userLocFirst=true;
+var userLocFirst=true, gpsFixed=false;
+// WGS-84 → GCJ-02 坐标转换（浏览器GPS转高德坐标系）
+var PI=Math.PI, A=6378245, EE=0.00669342162296594323;
+function _tLat(x,y){var r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;return r;}
+function _tLng(x,y){var r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3;return r;}
+function wgsToGcj(lat,lng){var dLat=_tLat(lng-105,lat-35);var dLng=_tLng(lng-105,lat-35);var rad=lat/180*PI;var m=Math.sin(rad);m=1-EE*m*m;var s=Math.sqrt(m);return{lat:lat+(dLat*180)/((A*(1-EE))/(m*s)*PI),lng:lng+(dLng*180)/(A/s*Math.cos(rad)*PI)};}
 function showUL(lat,lng){
   if(ud){map.removeLayer(ud);}
   var ic=L.divIcon({className:'',html:'<div style="width:22px;height:22px;background:#3498DB;border:4px solid #fff;border-radius:50%;box-shadow:0 0 20px rgba(52,152,219,0.8),0 0 40px rgba(52,152,219,0.3);"></div>',iconSize:[30,30],iconAnchor:[15,15]});
@@ -309,8 +390,10 @@ function showUL(lat,lng){
 }
 function startGPS(){
   if(!navigator.geolocation){window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'设备不支持GPS'}));return;}
-  navigator.geolocation.getCurrentPosition(function(p){showUL(p.coords.latitude,p.coords.longitude);},function(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'GPS错误'+e.code}));},{enableHighAccuracy:true,timeout:30000,maximumAge:0});
-  wId=navigator.geolocation.watchPosition(function(p){showUL(p.coords.latitude,p.coords.longitude);},function(){},{enableHighAccuracy:true,timeout:30000,maximumAge:5000,distanceFilter:5});
+  // ★ Phase 1: 网络定位先 (enableHighAccuracy=false) → 1-3s回结果，所有设备通用
+  navigator.geolocation.getCurrentPosition(function(p){var gcj=wgsToGcj(p.coords.latitude,p.coords.longitude);showUL(gcj.lat,gcj.lng);gpsFixed=true;},function(){},{enableHighAccuracy:false,timeout:10000,maximumAge:120000});
+  // ★ Phase 2: GPS精修 → 30s长超时给GPS芯片足够冷启动时间
+  wId=navigator.geolocation.watchPosition(function(p){var gcj=wgsToGcj(p.coords.latitude,p.coords.longitude);showUL(gcj.lat,gcj.lng);gpsFixed=true;},function(e){if(!gpsFixed){window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'GPS错误'+e.code}));}},{enableHighAccuracy:true,timeout:30000,maximumAge:60000,distanceFilter:3});
 }
 function init(){
   try{
@@ -357,8 +440,8 @@ init();
     <View style={styles.ct}>
       <View style={styles.tb}>
         <View style={styles.sw}>
-          <T activeOpacity={0.7} style={[styles.sb, styles.sa]}><Text style={[styles.st, styles.sta]}>🗺️ 地图</Text></T>
-          <T activeOpacity={0.7} onPress={() => navigation.navigate("ActivitySquare")} style={styles.sb}><Text style={styles.st}>🎪 活动广场</Text></T>
+          <T activeOpacity={0.7} onPress={() => switchCampus(Campus.GULOU)} style={[styles.sb, campus === Campus.GULOU && styles.sa]}><Text style={[styles.st, campus === Campus.GULOU && styles.sta]}>🏫 鼓楼</Text></T>
+          <T activeOpacity={0.7} onPress={() => switchCampus(Campus.XIANLIN)} style={[styles.sb, campus === Campus.XIANLIN && styles.sa]}><Text style={[styles.st, campus === Campus.XIANLIN && styles.sta]}>🏢 仙林</Text></T>
         </View>
       </View>
       {gpsLabel ? <View style={styles.gb}><Text style={styles.gt}>{gpsLabel}</Text></View> : null}
@@ -373,10 +456,6 @@ init();
         <View style={styles.cs}>
           <View style={styles.ctr}><Text style={styles.ci}>📦</Text><Text style={styles.cn}>{nc.length}</Text></View>
           <View style={[styles.ctr, styles.ca]}><Text style={styles.ci}>💎</Text><Text style={styles.cn}>{ac.length}</Text></View>
-          <T style={styles.sqBtn} onPress={() => setShowCampusModal(true)} activeOpacity={0.7}>
-            <Text style={{ fontSize: 14 }}>🏫</Text>
-            <Text style={{ fontSize: 10, fontWeight: "800", color: colors.primary, marginTop: 1 }}>校区切换</Text>
-          </T>
         </View>
         <T style={styles.locBtn} onPress={() => { wv.current?.postMessage(JSON.stringify({ type: "centerOnUser" })); }} activeOpacity={0.7}>
           <Text style={{ fontSize: 20 }}>📍</Text>
@@ -435,23 +514,6 @@ init();
           </View>
         </View>
       )}
-      {/* 校区选择弹窗 */}
-      <Modal visible={showCampusModal} transparent animationType="fade" onRequestClose={() => setShowCampusModal(false)}>
-        <T style={dlStyles.overlay} activeOpacity={1} onPress={() => setShowCampusModal(false)}>
-          <T style={dlStyles.card} activeOpacity={1} onPress={() => {}}>
-            <Text style={dlStyles.title}>选择校区</Text>
-            <T style={[dlStyles.primaryBtn, campus === Campus.GULOU && { backgroundColor: colors.rarity.典藏 }, { marginBottom: spacing.sm }]} onPress={() => { switchCampus(Campus.GULOU); setShowCampusModal(false); }} activeOpacity={0.7}>
-              <Text style={dlStyles.primaryBtnText}>🏫 鼓楼校区</Text>
-            </T>
-            <T style={[dlStyles.primaryBtn, campus === Campus.XIANLIN && { backgroundColor: colors.rarity.典藏 }]} onPress={() => { switchCampus(Campus.XIANLIN); setShowCampusModal(false); }} activeOpacity={0.7}>
-              <Text style={dlStyles.primaryBtnText}>🏢 仙林校区</Text>
-            </T>
-            <T style={[dlStyles.cancelBtn, { marginTop: spacing.md }]} onPress={() => setShowCampusModal(false)} activeOpacity={0.7}>
-              <Text style={dlStyles.cancelBtnText}>返回</Text>
-            </T>
-          </T>
-        </T>
-      </Modal>
     </View>
   );
 }

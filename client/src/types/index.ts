@@ -31,6 +31,7 @@ export interface CollectionItem {
   itemId: string;
   name: string;
   imageUrl: string;
+  thumbnailUrl?: string;
   rarity: Rarity;
   description?: string;
   count: number;
@@ -126,6 +127,7 @@ export interface MessageData {
   senderAvatar: string;
   content: string;
   contentType: "text" | "emoji";
+  isRevoked?: boolean;
   createdAt: string;
 }
 

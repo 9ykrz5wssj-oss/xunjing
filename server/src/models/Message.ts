@@ -8,6 +8,7 @@ export interface IMessage extends Document {
   contentType: ContentType;
   content: string;
   readBy: mongoose.Types.ObjectId[];
+  isRevoked: boolean;
   createdAt: Date;
 }
 
@@ -27,6 +28,7 @@ const MessageSchema = new Schema<IMessage>(
     },
     content: { type: String, required: true, maxlength: 2000 },
     readBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    isRevoked: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
