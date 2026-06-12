@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform } from "react-native";
 import md5 from "md5";
+import * as Location from "expo-location";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 
 let WebView: any = () => null;
@@ -74,27 +75,95 @@ export function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 自定义高德原生定位
+  // WGS-84 → GCJ-02 坐标转换（expo-location返回WGS84，高德地图用GCJ02）
+  const wgsToGcj = (lat: number, lng: number) => {
+    const PI = Math.PI, A = 6378245, EE = 0.00669342162296594323;
+    const tLat = (x: number, y: number) => { let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3; r += (160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3; return r; };
+    const tLng = (x: number, y: number) => { let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3; r += (150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3; return r; };
+    const dLat = tLat(lng-105, lat-35); const dLng = tLng(lng-105, lat-35);
+    const rad = lat/180*PI; let m = Math.sin(rad); m = 1-EE*m*m; const s = Math.sqrt(m);
+    return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) };
+  };
+
+  // ═══ GPS定位 ═══
+  // 策略: AMap原生模块(返回GCJ02，Android最优) → expo-location(返回WGS84需转换，跨平台) → IP兜底
   useEffect(() => {
-    const { NativeModules, DeviceEventEmitter } = require("react-native");
-    const module = NativeModules.AMapLocationModule;
-    const update = (lat: number, lng: number) => {
-      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-      wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat, lng }));
-    };
-    if (!module) { setGpsLabel("⚠️ 模块未加载"); return; }
-    const sub = DeviceEventEmitter.addListener("AMapLocation", (data: any) => {
+    let dead = false;
+    let locSub: any = null;
+    let expoWatch: any = null;
+
+    const updateLocation = (lat: number, lng: number, src: string) => {
+      if (dead) return;
       gpsFixedRef.current = true;
-      update(data.latitude, data.longitude);
-      setUserLocation({ lat: data.latitude, lng: data.longitude });
-      setCachedLocation({ lat: data.latitude, lng: data.longitude, campus });
+      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}${src ? ` (${src})` : ""}`);
+      setUserLocation({ lat, lng });
+      setCachedLocation({ lat, lng, campus });
+      wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat, lng }));
       const s = getCurrentSocket();
-      if (s?.connected) {
-        s.emit("location_update", { lat: data.latitude, lng: data.longitude, campus });
+      if (s?.connected) s.emit("location_update", { lat, lng, campus });
+    };
+
+    const startAMap = () => {
+      try {
+        const { NativeModules: NM, DeviceEventEmitter: DEE } = require("react-native");
+        const module = NM.AMapLocationModule;
+        if (!module) return false;
+        locSub = DEE.addListener("AMapLocation", (data: any) => {
+          // AMap原生模块直接返回GCJ-02，无需转换
+          updateLocation(data.latitude, data.longitude, "");
+        });
+        module.start();
+        // 5秒内没回调 → 启动expo-location兜底
+        setTimeout(() => {
+          if (!gpsFixedRef.current && !dead) startExpoLocation();
+        }, 5000);
+        return true;
+      } catch { return false; }
+    };
+
+    const startExpoLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          if (!gpsFixedRef.current) setGpsLabel("⚠️ 定位权限未授权");
+          return;
+        }
+        // 先快速低精度（Balanced），立马返回一个大概位置
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeout: 10000 })
+          .then((pos: any) => {
+            if (!dead && pos?.coords) {
+              const gcj = wgsToGcj(pos.coords.latitude, pos.coords.longitude);
+              updateLocation(gcj.lat, gcj.lng, "网络");
+            }
+          }).catch(() => {});
+        // 持续高精度追踪 + 坐标转换
+        expoWatch = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
+          (pos: any) => {
+            if (!dead && pos?.coords) {
+              const gcj = wgsToGcj(pos.coords.latitude, pos.coords.longitude);
+              updateLocation(gcj.lat, gcj.lng, "");
+            }
+          }
+        );
+      } catch {
+        if (!gpsFixedRef.current && !dead) setGpsLabel("⚠️ 定位模块不可用");
       }
-    });
-    module.start();
-    return () => { sub.remove(); module.stop(); };
+    };
+
+    // 延迟300ms给AMap原生模块初始化时间
+    const timer = setTimeout(() => {
+      const amapOk = startAMap();
+      if (!amapOk) startExpoLocation();
+    }, 300);
+
+    return () => {
+      dead = true;
+      clearTimeout(timer);
+      if (locSub) locSub.remove();
+      if (expoWatch) expoWatch.remove();
+      try { const { NativeModules: NM } = require("react-native"); NM.AMapLocationModule?.stop(); } catch {}
+    };
   }, []);
 
   // 缓存位置就绪后，若 WebView 已就绪 → 直接定位
