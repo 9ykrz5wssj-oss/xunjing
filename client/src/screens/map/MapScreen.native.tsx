@@ -50,6 +50,9 @@ export function MapScreen() {
   const socketRef = useRef<any>(null);
   const wv = useRef<WebView>(null);
   const isFirstFocusRef = useRef(true);
+  const gpsFixedRef = useRef(false);   // 是否已经拿过真实GPS（阻止IP覆盖）
+  const locationRef = useRef(userLocation);
+  locationRef.current = userLocation;
 
   // ═══ 预加载缓存 ═══
   useEffect(() => {
@@ -81,6 +84,7 @@ export function MapScreen() {
     };
     if (!module) { setGpsLabel("⚠️ 模块未加载"); return; }
     const sub = DeviceEventEmitter.addListener("AMapLocation", (data: any) => {
+      gpsFixedRef.current = true;
       update(data.latitude, data.longitude);
       setUserLocation({ lat: data.latitude, lng: data.longitude });
       setCachedLocation({ lat: data.latitude, lng: data.longitude, campus });
@@ -192,25 +196,29 @@ export function MapScreen() {
       if (d.type === "mapError") setMapState("failed");
       if (d.type === "chestClick") { const c = chests.find((x: any) => x._id === d.chestId); if (c) { setDialogData({ type: c.type === "advanced" ? "advancedChest" : "normalChest", data: { ...c, label: d.label } }); setDialogVisible(true); } }
       if (d.type === "eventClick") { const ev = events.find((x: any) => x._id === d.eventId); if (ev) { setDialogData({ type: "event", data: ev }); setDialogVisible(true); } }
-      if (d.type === "userCoords") setGpsLabel(`📍 ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`);
-      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); fetchIPFallback(); }
+      if (d.type === "userCoords") { gpsFixedRef.current = true; setGpsLabel(`📍 ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`); setUserLocation({ lat: d.lat, lng: d.lng }); setCachedLocation({ lat: d.lat, lng: d.lng, campus }); }
+      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); if (!gpsFixedRef.current) fetchIPFallback(); }
     } catch {}
   };
 
-  // 高德IP定位兜底
+  // 高德IP定位兜底（仅GPS从未成功时使用，避免覆盖真实位置）
   const fetchIPFallback = async () => {
+    if (gpsFixedRef.current) return; // GPS已成功过，不覆盖
     try {
       const k = "ada79bfcdbc793de96a57533937ab067";
       const s = "81fecb9d3d057e8df23374a76e5e01a7";
       const sig = md5(`key=${k}${s}`);
       const res = await fetch(`https://restapi.amap.com/v3/ip?key=${k}&sig=${sig}`);
       const data = await res.json();
-      if (data.status === "1" && data.rectangle) {
+      if (data.status === "1" && data.rectangle && !gpsFixedRef.current) {
         const [sw, ne] = data.rectangle.split(";");
         const [l1, a1] = sw.split(",").map(Number);
         const [l2, a2] = ne.split(",").map(Number);
-        setGpsLabel(`📍 ${((a1+a2)/2).toFixed(6)}, ${((l1+l2)/2).toFixed(6)} (IP)`);
-        wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat: (a1+a2)/2, lng: (l1+l2)/2 }));
+        const ipLat = (a1+a2)/2, ipLng = (l1+l2)/2;
+        setGpsLabel(`📍 ${ipLat.toFixed(6)}, ${ipLng.toFixed(6)} (IP)`);
+        setUserLocation({ lat: ipLat, lng: ipLng });
+        setCachedLocation({ lat: ipLat, lng: ipLng, campus });
+        wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat: ipLat, lng: ipLng }));
       }
     } catch {}
   };
