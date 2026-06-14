@@ -236,38 +236,6 @@ export function ProfileScreen({ navigation }: any) {
           <Text style={styles.setPasswordText}>🔐 设置登录密码</Text>
         </TouchableOpacity>
 
-        {/* ── 定位权限 ── */}
-        <TouchableOpacity
-          style={styles.locationButton}
-          onPress={() => {
-            if (navigator?.geolocation) {
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  Alert.alert("✅", `定位成功！\n${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
-                },
-                (err) => {
-                  if (err.code === 1) {
-                    Alert.alert("定位被拒绝", "请在系统设置中允许「寻鲸」访问位置信息", [
-                      { text: "知道了" },
-                    ]);
-                  } else {
-                    Alert.alert("定位失败", "请在系统设置中开启定位服务后重试", [{ text: "知道了" }]);
-                  }
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-              );
-            } else if (Platform.OS === "web") {
-              Alert.alert("提示", "请检查浏览器定位权限设置");
-            } else {
-              Alert.alert("提示", "请在系统设置 → 隐私 → 定位服务中授权");
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.locationButtonText}>📍 定位授权</Text>
-          <Text style={styles.locationButtonHint}>点击测试并授权GPS定位</Text>
-        </TouchableOpacity>
-
         {/* ── 底部操作 ── */}
         <View style={styles.actionsSection}>
 
@@ -514,9 +482,6 @@ const styles = StyleSheet.create({
   saveStudentIdText: { ...typography.bodyBold, color: "#FFF" },
   setPasswordBtn: { width: "100%", backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center", marginTop: spacing.lg, borderWidth: 1.5, borderColor: colors.secondary + "50" },
   setPasswordText: { ...typography.bodyBold, color: colors.textPrimary },
-  locationButton: { width: "100%", backgroundColor: colors.info + "10", borderRadius: borderRadius.lg, padding: spacing.lg, alignItems: "center", marginTop: spacing.md, borderWidth: 1.5, borderColor: colors.info + "40" },
-  locationButtonText: { ...typography.bodyBold, color: colors.info },
-  locationButtonHint: { ...typography.caption, color: colors.textHint, marginTop: spacing.xs },
   actionsSection: {
     width: "100%",
     marginTop: spacing.lg,

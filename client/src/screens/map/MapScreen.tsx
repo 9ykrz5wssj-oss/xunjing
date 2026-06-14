@@ -16,11 +16,36 @@ const CAMPUS_CENTERS: Record<Campus, { lng: number; lat: number; zoom: number }>
   xianlin: { lng: 118.9500, lat: 32.1170, zoom: 15 },
 };
 
-// WGS-84 → GCJ-02（浏览器GPS转高德坐标系）
+// WGS-84 → GCJ-02（标准坐标转换算法）
 const PI = Math.PI, A = 6378245.0, EE = 0.00669342162296594323;
 const _tLat = (x: number, y: number): number => { let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3; r += (160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3; return r; };
 const _tLng = (x: number, y: number): number => { let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3; r += (150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3; return r; };
 const wgs84ToGcj02 = (lat: number, lng: number) => { const dLat = _tLat(lng-105, lat-35); const dLng = _tLng(lng-105, lat-35); const rad = lat/180*PI; let m = Math.sin(rad); m = 1-EE*m*m; const s = Math.sqrt(m); return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) }; };
+
+// 校区边界（GCJ-02坐标系，与高德瓦片对齐，来自服务端 campus.ts）
+const CAMPUS_BOUNDS = [
+  { minLat: 32.0550, maxLat: 32.0615, minLng: 118.7720, maxLng: 118.7805 }, // 鼓楼 ~700m×700m
+  { minLat: 32.1100, maxLat: 32.1220, minLng: 118.9450, maxLng: 118.9570 }, // 仙林 ~1.3km×1.1km
+];
+
+// 坐标判断：浏览器navigator.geolocation可能返回WGS-84或GCJ-02
+// - iOS Safari / 标准Chrome → WGS-84（偏移300-600m，需转换）
+// - 国产安卓浏览器 → 底层用高德SDK，已返回GCJ-02（不能再次转换）
+// 策略：用校区边界做确定性判断（边界~1km宽，WGS偏移300-600m足以区分）
+const smartToGcj02 = (lat: number, lng: number): { lat: number; lng: number } => {
+  // 检查原始坐标是否已在某个校区范围内（落在界内 → 已是GCJ-02）
+  for (const b of CAMPUS_BOUNDS) {
+    if (lat >= b.minLat && lat <= b.maxLat && lng >= b.minLng && lng <= b.maxLng) {
+      return { lat, lng }; // 已是GCJ-02，不转换
+    }
+  }
+  // 落在所有校区范围外 → WGS-84，需要转换成GCJ-02
+  return wgs84ToGcj02(lat, lng);
+};
+
+// 微信内置浏览器检测（iOS微信禁用geolocation）
+const isWeChat = typeof navigator !== "undefined" && /micromessenger/i.test(navigator.userAgent);
+const isIOS = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
 
 let L: any = null;
 const loadLeaflet = () => new Promise<any>((resolve) => {
@@ -135,13 +160,22 @@ export function MapScreen() {
     let dead = false;
     let watchId = 0;
     let networkFixed = false; // 网络定位已成功（至少有个大概位置）
+    let bestAccuracy = Infinity; // 追踪最佳精度（米），数值越小越好
     const ERR_MSG: Record<number, string> = { 1: "⚠ 请开启定位权限", 2: "⚠ 定位信号弱", 3: "⚠ 定位超时" };
 
-    const updatePos = (lat: number, lng: number, src?: string) => {
-      const gcj = wgs84ToGcj02(lat, lng);
+    const updatePos = (lat: number, lng: number, accuracy?: number, src?: string) => {
+      const gcj = smartToGcj02(lat, lng);
+      // 精度过滤：如果有accuracy数据且比之前差很多（>2倍），保留旧位置不更新
+      // 但如果之前没有位置，任何精度都接受
+      if (accuracy != null && locationRef.current && accuracy > bestAccuracy * 2 && bestAccuracy < 100) {
+        return; // 新读数的精度明显更差，跳过
+      }
+      if (accuracy != null && accuracy < bestAccuracy) {
+        bestAccuracy = accuracy;
+      }
       gpsFixedRef.current = true;
-      const tag = src === "gps" ? "📍" : "📍";
-      setGpsLabel(`${tag} ${gcj.lat.toFixed(6)}, ${gcj.lng.toFixed(6)}${src === "gps" ? "" : ""}`);
+      const accStr = accuracy != null ? ` ±${Math.round(accuracy)}m` : "";
+      setGpsLabel(`📍 ${gcj.lat.toFixed(6)}, ${gcj.lng.toFixed(6)}${accStr}`);
       setUserLocation(gcj);
       setCachedLocation({ lat: gcj.lat, lng: gcj.lng, campus });
     };
@@ -152,15 +186,19 @@ export function MapScreen() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         networkFixed = true;
-        updatePos(pos.coords.latitude, pos.coords.longitude, "net");
+        updatePos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, "net");
       },
       (err) => {
         // 网络定位失败（罕见：设备无 WiFi/基站）
         if (!dead && !gpsFixedRef.current && !networkFixed) {
-          setGpsLabel("📍 正在获取位置...");
+          if (err.code === 1 && isWeChat && isIOS) {
+            setGpsLabel("⚠ 微信内无法定位，请用Safari打开");
+          } else {
+            setGpsLabel("📍 正在获取位置...");
+          }
         }
       },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
     );
 
     // ★ Phase 2: GPS 精修（enableHighAccuracy=true + 长超时）
@@ -169,7 +207,7 @@ export function MapScreen() {
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         networkFixed = true;
-        updatePos(pos.coords.latitude, pos.coords.longitude, "gps");
+        updatePos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, "gps");
       },
       (err) => {
         if (!dead) {
@@ -179,8 +217,12 @@ export function MapScreen() {
               setGpsLabel(`📍 ${locationRef.current.lat.toFixed(6)}, ${locationRef.current.lng.toFixed(6)} (信号弱)`);
             }
           } else if (!networkFixed) {
-            // 完全没有任何位置 → 显示具体错误
-            setGpsLabel(ERR_MSG[err.code] || `⚠ 定位失败(${err.code})`);
+            // 完全没有任何位置 → 显示具体错误，区分错误码
+            if (err.code === 1 && isWeChat && isIOS) {
+              setGpsLabel("⚠ 微信内无法定位，请用Safari打开");
+            } else {
+              setGpsLabel(ERR_MSG[err.code] || `⚠ 定位失败(${err.code})`);
+            }
             // 权限被拒 → 立即 IP 兜底
             if (err.code === 1) fetchIPFallback();
           }
@@ -256,19 +298,26 @@ export function MapScreen() {
             <T style={S.gr} onPress={() => {
               setGpsLabel("🔄 重新定位中...");
               if (navigator?.geolocation) {
+                if (isWeChat && isIOS) {
+                  setGpsLabel("⚠ 微信内无法定位，请用Safari打开");
+                  fetchIPFallback();
+                  return;
+                }
                 // 先快速网络定位，再高精度 GPS
                 navigator.geolocation.getCurrentPosition(
                   (pos) => {
-                    const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+                    const gcj = smartToGcj02(pos.coords.latitude, pos.coords.longitude);
+                    const acc = pos.coords.accuracy;
                     gpsFixedRef.current = true;
-                    setGpsLabel(`📍 ${gcj.lat.toFixed(6)}, ${gcj.lng.toFixed(6)}`);
+                    setGpsLabel(`📍 ${gcj.lat.toFixed(6)}, ${gcj.lng.toFixed(6)}${acc != null ? ` ±${Math.round(acc)}m` : ""}`);
                     setUserLocation(gcj);
                     setCachedLocation({ lat: gcj.lat, lng: gcj.lng, campus });
                     // 继续尝试 GPS 精度（后台）
                     navigator.geolocation.getCurrentPosition(
                       (pos2) => {
-                        const gcj2 = wgs84ToGcj02(pos2.coords.latitude, pos2.coords.longitude);
-                        setGpsLabel(`📍 ${gcj2.lat.toFixed(6)}, ${gcj2.lng.toFixed(6)}`);
+                        const gcj2 = smartToGcj02(pos2.coords.latitude, pos2.coords.longitude);
+                        const acc2 = pos2.coords.accuracy;
+                        setGpsLabel(`📍 ${gcj2.lat.toFixed(6)}, ${gcj2.lng.toFixed(6)}${acc2 != null ? ` ±${Math.round(acc2)}m` : ""}`);
                         setUserLocation(gcj2);
                         setCachedLocation({ lat: gcj2.lat, lng: gcj2.lng, campus });
                       },
@@ -276,8 +325,15 @@ export function MapScreen() {
                       { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 }
                     );
                   },
-                  () => { setGpsLabel("⚠ 定位信号弱"); if (!gpsFixedRef.current) fetchIPFallback(); },
-                  { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
+                  (err) => {
+                    if (err.code === 1 && isWeChat && isIOS) {
+                      setGpsLabel("⚠ 微信内无法定位，请用Safari打开");
+                    } else {
+                      setGpsLabel(`⚠ ${err.code === 1 ? "请开启定位权限" : err.code === 2 ? "定位信号弱" : err.code === 3 ? "定位超时" : `定位失败(${err.code})`}`);
+                    }
+                    if (!gpsFixedRef.current) fetchIPFallback();
+                  },
+                  { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
                 );
               } else { fetchIPFallback(); }
             }} activeOpacity={0.7}>

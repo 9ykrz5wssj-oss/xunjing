@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform } from "react-native";
-import md5 from "md5";
-import * as Location from "expo-location";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 
 let WebView: any = () => null;
@@ -51,9 +49,6 @@ export function MapScreen() {
   const socketRef = useRef<any>(null);
   const wv = useRef<WebView>(null);
   const isFirstFocusRef = useRef(true);
-  const gpsFixedRef = useRef(false);   // 是否已经拿过真实GPS（阻止IP覆盖）
-  const locationRef = useRef(userLocation);
-  locationRef.current = userLocation;
 
   // ═══ 预加载缓存 ═══
   useEffect(() => {
@@ -75,95 +70,26 @@ export function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // WGS-84 → GCJ-02 坐标转换（expo-location返回WGS84，高德地图用GCJ02）
-  const wgsToGcj = (lat: number, lng: number) => {
-    const PI = Math.PI, A = 6378245, EE = 0.00669342162296594323;
-    const tLat = (x: number, y: number) => { let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3; r += (160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3; return r; };
-    const tLng = (x: number, y: number) => { let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3; r += (150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3; return r; };
-    const dLat = tLat(lng-105, lat-35); const dLng = tLng(lng-105, lat-35);
-    const rad = lat/180*PI; let m = Math.sin(rad); m = 1-EE*m*m; const s = Math.sqrt(m);
-    return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) };
-  };
-
-  // ═══ GPS定位 ═══
-  // 策略: AMap原生模块(返回GCJ02，Android最优) → expo-location(返回WGS84需转换，跨平台) → IP兜底
+  // 自定义高德原生定位
   useEffect(() => {
-    let dead = false;
-    let locSub: any = null;
-    let expoWatch: any = null;
-
-    const updateLocation = (lat: number, lng: number, src: string) => {
-      if (dead) return;
-      gpsFixedRef.current = true;
-      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}${src ? ` (${src})` : ""}`);
-      setUserLocation({ lat, lng });
-      setCachedLocation({ lat, lng, campus });
+    const { NativeModules, DeviceEventEmitter } = require("react-native");
+    const module = NativeModules.AMapLocationModule;
+    const update = (lat: number, lng: number) => {
+      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
       wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat, lng }));
+    };
+    if (!module) { setGpsLabel("📍 正在获取位置..."); return; }
+    const sub = DeviceEventEmitter.addListener("AMapLocation", (data: any) => {
+      update(data.latitude, data.longitude);
+      setUserLocation({ lat: data.latitude, lng: data.longitude });
+      setCachedLocation({ lat: data.latitude, lng: data.longitude, campus });
       const s = getCurrentSocket();
-      if (s?.connected) s.emit("location_update", { lat, lng, campus });
-    };
-
-    const startAMap = () => {
-      try {
-        const { NativeModules: NM, DeviceEventEmitter: DEE } = require("react-native");
-        const module = NM.AMapLocationModule;
-        if (!module) return false;
-        locSub = DEE.addListener("AMapLocation", (data: any) => {
-          // AMap原生模块直接返回GCJ-02，无需转换
-          updateLocation(data.latitude, data.longitude, "");
-        });
-        module.start();
-        // 5秒内没回调 → 启动expo-location兜底
-        setTimeout(() => {
-          if (!gpsFixedRef.current && !dead) startExpoLocation();
-        }, 5000);
-        return true;
-      } catch { return false; }
-    };
-
-    const startExpoLocation = async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          if (!gpsFixedRef.current) setGpsLabel("⚠️ 定位权限未授权");
-          return;
-        }
-        // 先快速低精度（Balanced），立马返回一个大概位置
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeout: 10000 })
-          .then((pos: any) => {
-            if (!dead && pos?.coords) {
-              const gcj = wgsToGcj(pos.coords.latitude, pos.coords.longitude);
-              updateLocation(gcj.lat, gcj.lng, "网络");
-            }
-          }).catch(() => {});
-        // 持续高精度追踪 + 坐标转换
-        expoWatch = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
-          (pos: any) => {
-            if (!dead && pos?.coords) {
-              const gcj = wgsToGcj(pos.coords.latitude, pos.coords.longitude);
-              updateLocation(gcj.lat, gcj.lng, "");
-            }
-          }
-        );
-      } catch {
-        if (!gpsFixedRef.current && !dead) setGpsLabel("⚠️ 定位模块不可用");
+      if (s?.connected) {
+        s.emit("location_update", { lat: data.latitude, lng: data.longitude, campus });
       }
-    };
-
-    // 延迟300ms给AMap原生模块初始化时间
-    const timer = setTimeout(() => {
-      const amapOk = startAMap();
-      if (!amapOk) startExpoLocation();
-    }, 300);
-
-    return () => {
-      dead = true;
-      clearTimeout(timer);
-      if (locSub) locSub.remove();
-      if (expoWatch) expoWatch.remove();
-      try { const { NativeModules: NM } = require("react-native"); NM.AMapLocationModule?.stop(); } catch {}
-    };
+    });
+    module.start();
+    return () => { sub.remove(); module.stop(); };
   }, []);
 
   // 缓存位置就绪后，若 WebView 已就绪 → 直接定位
@@ -265,29 +191,28 @@ export function MapScreen() {
       if (d.type === "mapError") setMapState("failed");
       if (d.type === "chestClick") { const c = chests.find((x: any) => x._id === d.chestId); if (c) { setDialogData({ type: c.type === "advanced" ? "advancedChest" : "normalChest", data: { ...c, label: d.label } }); setDialogVisible(true); } }
       if (d.type === "eventClick") { const ev = events.find((x: any) => x._id === d.eventId); if (ev) { setDialogData({ type: "event", data: ev }); setDialogVisible(true); } }
-      if (d.type === "userCoords") { gpsFixedRef.current = true; setGpsLabel(`📍 ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`); setUserLocation({ lat: d.lat, lng: d.lng }); setCachedLocation({ lat: d.lat, lng: d.lng, campus }); }
-      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); if (!gpsFixedRef.current) fetchIPFallback(); }
+      if (d.type === "userCoords") {
+        setGpsLabel(`📍 ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`);
+        setUserLocation({ lat: d.lat, lng: d.lng });
+        setCachedLocation({ lat: d.lat, lng: d.lng, campus });
+        const s = getCurrentSocket();
+        if (s?.connected) s.emit("location_update", { lat: d.lat, lng: d.lng, campus });
+      }
+      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); fetchIPFallback(); }
     } catch {}
   };
 
-  // 高德IP定位兜底（仅GPS从未成功时使用，避免覆盖真实位置）
+  // IP定位兜底（通过服务端代理，不暴露API密钥）
   const fetchIPFallback = async () => {
-    if (gpsFixedRef.current) return; // GPS已成功过，不覆盖
     try {
-      const k = "ada79bfcdbc793de96a57533937ab067";
-      const s = "81fecb9d3d057e8df23374a76e5e01a7";
-      const sig = md5(`key=${k}${s}`);
-      const res = await fetch(`https://restapi.amap.com/v3/ip?key=${k}&sig=${sig}`);
-      const data = await res.json();
-      if (data.status === "1" && data.rectangle && !gpsFixedRef.current) {
-        const [sw, ne] = data.rectangle.split(";");
-        const [l1, a1] = sw.split(",").map(Number);
-        const [l2, a2] = ne.split(",").map(Number);
-        const ipLat = (a1+a2)/2, ipLng = (l1+l2)/2;
-        setGpsLabel(`📍 ${ipLat.toFixed(6)}, ${ipLng.toFixed(6)} (IP)`);
-        setUserLocation({ lat: ipLat, lng: ipLng });
-        setCachedLocation({ lat: ipLat, lng: ipLng, campus });
-        wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat: ipLat, lng: ipLng }));
+      const res: any = await api.get("/geo/ip-location");
+      if (res?.success && res.data) {
+        const { lat, lng, province, city } = res.data;
+        const label = province ? `${province}${city || ""}` : "IP";
+        setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (${label})`);
+        setUserLocation({ lat, lng });
+        setCachedLocation({ lat, lng, campus });
+        wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat, lng }));
       }
     } catch {}
   };
@@ -452,12 +377,7 @@ export function MapScreen() {
 <div id="map"></div><div class="loader" id="ldr"><div class="s"></div>加载地图</div>
 <script>
 var map, cl, ud, wId;
-var userLocFirst=true, gpsFixed=false;
-// WGS-84 → GCJ-02 坐标转换（浏览器GPS转高德坐标系）
-var PI=Math.PI, A=6378245, EE=0.00669342162296594323;
-function _tLat(x,y){var r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;return r;}
-function _tLng(x,y){var r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3;return r;}
-function wgsToGcj(lat,lng){var dLat=_tLat(lng-105,lat-35);var dLng=_tLng(lng-105,lat-35);var rad=lat/180*PI;var m=Math.sin(rad);m=1-EE*m*m;var s=Math.sqrt(m);return{lat:lat+(dLat*180)/((A*(1-EE))/(m*s)*PI),lng:lng+(dLng*180)/(A/s*Math.cos(rad)*PI)};}
+var userLocFirst=true;
 function showUL(lat,lng){
   if(ud){map.removeLayer(ud);}
   var ic=L.divIcon({className:'',html:'<div style="width:22px;height:22px;background:#3498DB;border:4px solid #fff;border-radius:50%;box-shadow:0 0 20px rgba(52,152,219,0.8),0 0 40px rgba(52,152,219,0.3);"></div>',iconSize:[30,30],iconAnchor:[15,15]});
@@ -465,12 +385,57 @@ function showUL(lat,lng){
   if(userLocFirst){userLocFirst=false;map.setView([lat,lng],Math.max(map.getZoom(),16));}
   window.ReactNativeWebView.postMessage(JSON.stringify({type:'userCoords',lat:lat,lng:lng}));
 }
+var _gpsStarted=false;
 function startGPS(){
-  if(!navigator.geolocation){window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'设备不支持GPS'}));return;}
-  // ★ Phase 1: 网络定位先 (enableHighAccuracy=false) → 1-3s回结果，所有设备通用
-  navigator.geolocation.getCurrentPosition(function(p){var gcj=wgsToGcj(p.coords.latitude,p.coords.longitude);showUL(gcj.lat,gcj.lng);gpsFixed=true;},function(){},{enableHighAccuracy:false,timeout:10000,maximumAge:120000});
-  // ★ Phase 2: GPS精修 → 30s长超时给GPS芯片足够冷启动时间
-  wId=navigator.geolocation.watchPosition(function(p){var gcj=wgsToGcj(p.coords.latitude,p.coords.longitude);showUL(gcj.lat,gcj.lng);gpsFixed=true;},function(e){if(!gpsFixed){window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'GPS错误'+e.code}));}},{enableHighAccuracy:true,timeout:30000,maximumAge:60000,distanceFilter:3});
+  if(!navigator.geolocation){
+    window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'设备不支持GPS'}));
+    return;
+  }
+  // Phase 1: 网络/WiFi/基站定位 — 1~3秒快速返回，所有iOS/Android通用
+  navigator.geolocation.getCurrentPosition(
+    function(p){
+      _gpsStarted=true;
+      showUL(p.coords.latitude, p.coords.longitude);
+    },
+    function(err){
+      // 网络定位失败罕见（设备无WiFi/基站），不阻断
+    },
+    {enableHighAccuracy:false, timeout:10000, maximumAge:120000}
+  );
+  // Phase 2: GPS高精度精修 — 给芯片充足冷启动时间(最长30s)
+  navigator.geolocation.getCurrentPosition(
+    function(p){
+      _gpsStarted=true;
+      showUL(p.coords.latitude, p.coords.longitude);
+    },
+    function(err){
+      if(!_gpsStarted){
+        var msgs={1:'请开启定位权限',2:'定位信号弱',3:'定位超时'};
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type:'geoError',
+          msg: msgs[err.code] || ('定位失败('+err.code+')')
+        }));
+      }
+    },
+    {enableHighAccuracy:true, timeout:30000, maximumAge:60000}
+  );
+  // watchPosition 持续追踪
+  wId=navigator.geolocation.watchPosition(
+    function(p){
+      _gpsStarted=true;
+      showUL(p.coords.latitude, p.coords.longitude);
+    },
+    function(err){
+      if(!_gpsStarted){
+        var msgs={1:'请开启定位权限',2:'定位信号弱',3:'定位超时'};
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type:'geoError',
+          msg: msgs[err.code] || ('定位失败('+err.code+')')
+        }));
+      }
+    },
+    {enableHighAccuracy:true, timeout:30000, maximumAge:60000, distanceFilter:5}
+  );
 }
 function init(){
   try{
@@ -479,6 +444,7 @@ function init(){
     cl=L.layerGroup().addTo(map);L.control.zoom({position:'bottomright'}).addTo(map);
     document.getElementById('ldr').style.display='none';
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapReady'}));
+    startGPS();
   }catch(e){document.getElementById('ldr').innerHTML='加载失败';window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapError'}));}
 }
 function updateMarkers(chests,events){
@@ -507,6 +473,7 @@ document.addEventListener('message',function(e){
     if(d.type==='updateMarkers'&&map)updateMarkers(d.chests,d.events);
     if(d.type==='userLoc'&&map)showUL(d.lat,d.lng);
     if(d.type==='centerOnUser'&&ud){var pos=ud.getLatLng();if(pos)map.setView([pos.lat,pos.lng],Math.max(map.getZoom(),16));}
+    if(d.type==='startGPS'&&typeof startGPS==='function')startGPS();
   }catch(err){}
 });
 setTimeout(function(){if(!map){document.getElementById('ldr').innerHTML='加载超时';window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapError'}));}},25000);
@@ -521,7 +488,24 @@ init();
           <T activeOpacity={0.7} onPress={() => switchCampus(Campus.XIANLIN)} style={[styles.sb, campus === Campus.XIANLIN && styles.sa]}><Text style={[styles.st, campus === Campus.XIANLIN && styles.sta]}>🏢 仙林</Text></T>
         </View>
       </View>
-      {gpsLabel ? <View style={styles.gb}><Text style={styles.gt}>{gpsLabel}</Text></View> : null}
+      {gpsLabel ? (
+        <View style={styles.gb}>
+          <Text style={styles.gt}>{gpsLabel}</Text>
+          {gpsLabel.startsWith("⚠") && (
+            <T style={styles.gr} onPress={() => {
+              setGpsLabel("🔄 重新定位中...");
+              // 通过WebView重新触发GPS
+              if (wv.current && mapState === "ready") {
+                wv.current.postMessage(JSON.stringify({ type: "startGPS" }));
+              }
+              // IP兜底
+              fetchIPFallback();
+            }} activeOpacity={0.7}>
+              <Text style={styles.grt}>🔄 重试</Text>
+            </T>
+          )}
+        </View>
+      ) : null}
       <View style={{ flex: 1 }}>
         {mapState === "failed" ? <View style={styles.fb}><Text style={{ fontSize: 64 }}>🗺️</Text><Text style={{ color: "#999", marginTop: 16 }}>地图加载失败</Text><T style={styles.rbtn} onPress={() => setMapState("loading")}><Text style={{ color: colors.primary, fontWeight: "700" }}>🔄 重试</Text></T></View> :
           <WebView ref={wv} source={{ html }} style={{ flex: 1 }} onMessage={handleMsg} javaScriptEnabled domStorageEnabled geolocationEnabled />
@@ -605,8 +589,10 @@ const styles = StyleSheet.create({
   sa: { backgroundColor: colors.primary },
   st: { fontWeight: "700", color: "#999" },
   sta: { color: "#fff" },
-  gb: { backgroundColor: "rgba(52,152,219,0.9)", paddingVertical: 4, alignItems: "center" },
+  gb: { backgroundColor: "rgba(52,152,219,0.9)", paddingVertical: 4, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   gt: { color: "#fff", fontWeight: "700", fontSize: 12, fontFamily: "monospace" },
+  gr: { backgroundColor: "rgba(255,255,255,0.25)", paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
+  grt: { color: "#fff", fontWeight: "700", fontSize: 11 },
   fb: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#E8F0E0" },
   lo: { ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center", backgroundColor: "#E8F0E0" },
   cs: { position: "absolute", top: 12, right: 12, gap: 8, alignItems: "flex-end" },
