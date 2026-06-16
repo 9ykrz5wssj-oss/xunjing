@@ -54,30 +54,9 @@ export function MapScreen() {
     }); return () => { c = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }, []);
 
-  // IP 定位兜底（通过后端代理，避免浏览器 CORS 拦截）
-  const fetchIPFallback = async () => {
-    try {
-      const res: any = await api.get("/geo/ip-location");
-      if (res?.success && res.data) {
-        const { lat, lng, province, city } = res.data;
-        const label = province ? `${province}${city || ""}` : "IP";
-        setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (${label})`);
-        setUserLocation({ lat, lng });
-        if (mapRef.current && L) {
-          if (userMarkerRef.current) mapRef.current.removeLayer(userMarkerRef.current);
-          const icon = L.divIcon({ className: "", html: '<div style="width:22px;height:22px;background:#F39C12;border:4px solid #fff;border-radius:50%;box-shadow:0 0 20px rgba(243,156,18,0.8);"></div>', iconSize: [30,30], iconAnchor: [15,15] });
-          userMarkerRef.current = L.marker([lat, lng], { icon, zIndexOffset: 9999 }).addTo(mapRef.current);
-          if (!userLocation) mapRef.current.setView([lat, lng], Math.max(mapRef.current.getZoom(), 13));
-        }
-        const s = getCurrentSocket(); if (s?.connected) s.emit("location_update", { lat, lng, campus });
-        return true;
-      }
-    } catch {}
-    return false;
-  };
-
+  // GPS定位：直接获取最新高精度位置，WGS84→GCJ02（和之前正常工作的版本一致）
   useEffect(() => {
-    if (!navigator?.geolocation) { fetchIPFallback(); return; }
+    if (!navigator?.geolocation) { setGpsLabel("⚠ 浏览器不支持定位"); return; }
     let first = true; let dead = false; let watchId = 0;
 
     const updatePos = (lat: number, lng: number) => {
@@ -91,42 +70,20 @@ export function MapScreen() {
       const s = getCurrentSocket(); if (s?.connected) s.emit("location_update", { lat: gcj.lat, lng: gcj.lng, campus });
     };
 
-    const ERR_MSG: Record<number, string> = { 1: "⚠ 请开启定位权限", 2: "⚠ 定位信号弱", 3: "⚠ 定位超时" };
-    let failCount = 0;
+    // 直接请求高精度GPS位置
+    navigator.geolocation.getCurrentPosition(
+      (pos) => updatePos(pos.coords.latitude, pos.coords.longitude),
+      (err) => setGpsLabel(err.code === 1 ? "⚠ 请允许浏览器定位权限" : err.code === 3 ? "⚠ 定位超时，请检查GPS" : "⚠ 定位信号弱"),
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+    );
+    // 持续追踪
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => updatePos(pos.coords.latitude, pos.coords.longitude),
+      () => {},
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000, distanceFilter: 10 }
+    );
 
-    const startWatch = () => {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => { failCount = 0; updatePos(pos.coords.latitude, pos.coords.longitude); },
-        (err) => {
-          failCount++;
-          if (!dead) setGpsLabel(ERR_MSG[err.code] || `⚠ 定位失败(${err.code})`);
-          // 连续失败 3 次后切到 IP 定位兜底
-          if (failCount >= 3 && !dead) { fetchIPFallback(); }
-        },
-        { enableHighAccuracy: false, maximumAge: 10000, timeout: 30000 }
-      );
-    };
-
-    // 延迟 800ms 再请求定位（Safari 页面刚加载时 Geolocation 子系统未就绪）
-    const timer = setTimeout(() => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          updatePos(pos.coords.latitude, pos.coords.longitude);
-          // 预热成功后启动持续追踪
-          startWatch();
-        },
-        (err) => {
-          if (!dead) setGpsLabel(ERR_MSG[err.code] || `⚠ 定位失败(${err.code})`);
-          // 第一次就失败了：直接尝试 watchPosition（有时 getCurrentPosition 失败但 watchPosition 能成功）
-          startWatch();
-          // 同时尝试 IP 定位兜底
-          if (!dead) fetchIPFallback();
-        },
-        { enableHighAccuracy: false, timeout: 25000, maximumAge: 120000 }
-      );
-    }, 800);
-
-    return () => { dead = true; clearTimeout(timer); if (watchId) navigator.geolocation?.clearWatch(watchId); };
+    return () => { dead = true; if (watchId) navigator.geolocation?.clearWatch(watchId); };
   }, [campus]);
 
   const fetchAll = useCallback(async () => { try {
@@ -187,10 +144,10 @@ export function MapScreen() {
                     }
                     const s = getCurrentSocket(); if (s?.connected) s.emit("location_update", { lat: gcj.lat, lng: gcj.lng, campus });
                   },
-                  () => { setGpsLabel("⚠ 定位信号弱"); fetchIPFallback(); },
-                  { enableHighAccuracy: false, timeout: 20000 }
+                  () => setGpsLabel("⚠ 定位信号弱"),
+                  { enableHighAccuracy: true, timeout: 30000 }
                 );
-              } else { fetchIPFallback(); }
+              }
             }} activeOpacity={0.7}>
               <Text style={S.grt}>🔄 重试</Text>
             </T>
