@@ -83,13 +83,13 @@ export function MapScreen() {
     return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) };
   };
 
-  // GPS定位：expo-location主力 + AMap原生加速。和网页版同逻辑：WGS84→GCJ02
+  // GPS定位：参考网页版逻辑，expo-location请求权限→获取WGS84→转GCJ02
   useEffect(() => {
     let dead = false;
     let amapSub: any = null;
     let expoWatch: any = null;
 
-    const update = (lat: number, lng: number, src?: string) => {
+    const update = (lat: number, lng: number) => {
       if (dead) return;
       setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
       setUserLocation({ lat, lng });
@@ -102,31 +102,48 @@ export function MapScreen() {
     // AMap原生模块（返回GCJ02，无需转换）
     try {
       const { NativeModules: NM, DeviceEventEmitter: DEE } = require("react-native");
-      const module = NM.AMapLocationModule;
-      if (module) {
-        amapSub = DEE.addListener("AMapLocation", (data: any) => {
-          update(data.latitude, data.longitude);
-        });
-        module.start();
+      if (NM.AMapLocationModule) {
+        amapSub = DEE.addListener("AMapLocation", (data: any) => update(data.latitude, data.longitude));
+        NM.AMapLocationModule.start();
       }
     } catch {}
 
-    // expo-location 主力：请求权限→获取位置→WGS84转GCJ02→更新地图
+    // 主定位：先检查系统位置开关→请求权限→逐级尝试获取位置
     (async () => {
       try {
+        // 检查系统定位服务是否开启
+        const enabled = await Location.hasServicesEnabledAsync();
+        if (dead) return;
+        if (!enabled) { setGpsLabel("⚠️ 请开启手机定位服务"); return; }
+        // 请求权限
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (dead) return;
-        if (status !== "granted") { setGpsLabel("⚠️ 请授权定位权限后重启App"); return; }
+        if (status !== "granted") { setGpsLabel("⚠️ 定位权限未授权，请在系统设置中开启"); return; }
+
         setGpsLabel("📍 正在获取位置...");
-        // 快速低精度定位（等同网页版 enableHighAccuracy:false）
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeout: 15000 })
-          .then((pos: any) => {
+        // 先尝试获取上一次已知位置（最快）
+        try {
+          const last = await Location.getLastKnownPositionAsync();
+          if (!dead && last?.coords) {
+            const gcj = wgs84ToGcj02(last.coords.latitude, last.coords.longitude);
+            update(gcj.lat, gcj.lng);
+          }
+        } catch {}
+        // 再获取当前位置：先用Low（最快），逐步升级
+        for (const acc of [Location.Accuracy.Low, Location.Accuracy.Balanced, Location.Accuracy.High]) {
+          if (dead) break;
+          try {
+            const pos = await Location.getCurrentPositionAsync({ accuracy: acc, timeout: 12000 });
             if (!dead && pos?.coords) {
               const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
               update(gcj.lat, gcj.lng);
+              break; // 拿到了就停
             }
-          }).catch(() => {});
-        // 持续高精度追踪
+          } catch (e: any) {
+            // 继续尝试更高精度
+          }
+        }
+        // 持续追踪
         expoWatch = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 8 },
           (pos: any) => {
@@ -136,7 +153,9 @@ export function MapScreen() {
             }
           }
         );
-      } catch (e) { if (!dead) setGpsLabel("⚠️ 定位服务异常，请检查系统定位开关"); }
+      } catch (e: any) {
+        if (!dead) setGpsLabel(`⚠️ 定位异常: ${e?.message || '未知错误'}`);
+      }
     })();
 
     return () => {
