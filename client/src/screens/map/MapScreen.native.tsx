@@ -57,7 +57,9 @@ export function MapScreen() {
       const loc = await getCachedLocation();
       if (loc) {
         if (loc.campus !== Campus.GULOU) setCampus(loc.campus);
-        setInitialCenter({ lat: loc.lat, lng: loc.lng, zoom: 16 });
+        // 缓存位置仅用于预填，不替代GPS定位——避免旧的错误位置（如北京）持续显示
+        setUserLocation({ lat: loc.lat, lng: loc.lng });
+        setGpsLabel(`📍 ${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)} (上次位置)`);
       }
       // 预载宝箱和活动缓存
       const campusKey = loc?.campus || Campus.GULOU;
@@ -548,12 +550,9 @@ init();
           {gpsLabel.startsWith("⚠") && (
             <T style={styles.gr} onPress={() => {
               setGpsLabel("🔄 重新定位中...");
-              // 通过WebView重新触发GPS
               if (wv.current && mapState === "ready") {
                 wv.current.postMessage(JSON.stringify({ type: "startGPS" }));
               }
-              // IP兜底
-              fetchIPFallback();
             }} activeOpacity={0.7}>
               <Text style={styles.grt}>🔄 重试</Text>
             </T>
