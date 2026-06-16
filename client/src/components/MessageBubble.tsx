@@ -14,7 +14,15 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ content, isMine, senderNickname, senderAvatar, timestamp, showAvatar, isRevoked }: MessageBubbleProps) {
-  const timeStr = new Date(timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  const timeStr = (() => {
+    const d = new Date(timestamp);
+    const now = new Date();
+    const time = d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    if (d.toDateString() === now.toDateString()) return time;
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return `昨天 ${time}`;
+    return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
+  })();
 
   return (
     <View style={[styles.row, isMine && styles.rowMine]}>

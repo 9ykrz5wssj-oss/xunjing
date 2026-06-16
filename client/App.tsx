@@ -6,7 +6,7 @@ import { RootNavigator } from "./src/navigation/RootNavigator";
 import { useAuthStore } from "./src/store/authStore";
 import api from "./src/services/api";
 
-const LOCAL_VERSION = "1.0.0"; // 与app.json一致
+const LOCAL_VERSION = "1.0.1"; // 与app.json一致
 
 function isNewer(server: string, local: string): boolean {
   const a = server.split(".").map(Number);
