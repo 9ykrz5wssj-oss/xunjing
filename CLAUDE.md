@@ -145,6 +145,22 @@ adb logcat -d | grep -i amap         # 抓AMap SDK日志
 - **不要缓存用户位置作为地图初始中心**——旧错误位置会污染新会话
 - **不要改MapScreen.tsx的GPS**——网页版有自己的逻辑，互不影响
 
+## 🔔 版本更新机制
+
+### 工作原理
+- 服务端 `server/src/index.ts` → `APP_VERSION` → `/api/version` 接口
+- App端 `client/App.tsx` → `LOCAL_VERSION` → 启动时 fetch `/api/version`
+- 服务端版本 > 本地版本 → 弹窗"发现新版本"→ 下载 `https://seekwhale.cn/app-release.apk`
+
+### 触发更新步骤
+只需改一处：`server/src/index.ts` 的 `APP_VERSION`（如 `1.0.1` → `1.0.2`），部署服务端即可。
+之后同步 `client/App.tsx` 的 `LOCAL_VERSION` 和 `client/app.json` 的 `version`。
+
+### 踩坑：fetch URL
+- **不能用 `api.get("/version")`**：api服务会自动加 `/api/v1` 前缀变成 `/api/v1/version`（404）
+- **不能用 `https://seekwhale.cn/api/version`**：RN环境fetch对HTTPS可能抛 `SocketException: Connection reset`
+- **必须用 `http://124.222.230.80:3000/api/version`**：HTTP直连最稳定
+
 ## 🔴 本次会话中的严重失误
 
 ### 1. JSX布局反复失败
