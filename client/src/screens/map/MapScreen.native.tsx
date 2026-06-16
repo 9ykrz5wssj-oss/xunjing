@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform } from "react-native";
+import * as Location from "expo-location";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 
 let WebView: any = () => null;
@@ -72,24 +73,59 @@ export function MapScreen() {
 
   // 自定义高德原生定位
   useEffect(() => {
-    const { NativeModules, DeviceEventEmitter } = require("react-native");
-    const module = NativeModules.AMapLocationModule;
-    const update = (lat: number, lng: number) => {
-      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    let dead = false;
+    let amapSub: any = null;
+    let expoWatch: any = null;
+
+    const update = (lat: number, lng: number, src?: string) => {
+      if (dead) return;
+      setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}${src ? ` (${src})` : ""}`);
+      setUserLocation({ lat, lng });
+      setCachedLocation({ lat, lng, campus });
       wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat, lng }));
-    };
-    if (!module) { setGpsLabel("📍 正在获取位置..."); return; }
-    const sub = DeviceEventEmitter.addListener("AMapLocation", (data: any) => {
-      update(data.latitude, data.longitude);
-      setUserLocation({ lat: data.latitude, lng: data.longitude });
-      setCachedLocation({ lat: data.latitude, lng: data.longitude, campus });
       const s = getCurrentSocket();
-      if (s?.connected) {
-        s.emit("location_update", { lat: data.latitude, lng: data.longitude, campus });
-      }
-    });
-    module.start();
-    return () => { sub.remove(); module.stop(); };
+      if (s?.connected) s.emit("location_update", { lat, lng, campus });
+    };
+
+    // 方式1：高德原生模块（Android优先，返回GCJ02无需转换）
+    const startAMap = () => {
+      try {
+        const { NativeModules: NM, DeviceEventEmitter: DEE } = require("react-native");
+        const module = NM.AMapLocationModule;
+        if (!module) return false;
+        amapSub = DEE.addListener("AMapLocation", (data: any) => {
+          update(data.latitude, data.longitude);
+        });
+        module.start();
+        return true;
+      } catch { return false; }
+    };
+
+    // 方式2：expo-location 兜底（跨平台，返回WGS84需转GCJ02）
+    const startExpo = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") { if (!dead) setGpsLabel("⚠️ 定位权限未授权"); return; }
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeout: 10000 })
+          .then((pos: any) => {
+            if (!dead && pos?.coords) update(pos.coords.latitude, pos.coords.longitude, "网络");
+          }).catch(() => {});
+        expoWatch = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 8 },
+          (pos: any) => { if (!dead && pos?.coords) update(pos.coords.latitude, pos.coords.longitude); }
+        );
+      } catch { if (!dead) setGpsLabel("⚠️ 定位不可用"); }
+    };
+
+    const amapOk = startAMap();
+    if (!amapOk) startExpo();
+
+    return () => {
+      dead = true;
+      if (amapSub) amapSub.remove();
+      if (expoWatch) expoWatch.remove();
+      try { const { NativeModules: NM } = require("react-native"); NM.AMapLocationModule?.stop(); } catch {}
+    };
   }, []);
 
   // 缓存位置就绪后，若 WebView 已就绪 → 直接定位
@@ -198,15 +234,16 @@ export function MapScreen() {
         const s = getCurrentSocket();
         if (s?.connected) s.emit("location_update", { lat: d.lat, lng: d.lng, campus });
       }
-      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); fetchIPFallback(); }
+      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); if (!userLocation) fetchIPFallback(); }
     } catch {}
   };
 
-  // IP定位兜底（通过服务端代理，不暴露API密钥）
+  // IP定位兜底（仅在没有真实GPS位置时使用）
   const fetchIPFallback = async () => {
+    if (userLocation) return; // 已有GPS位置，不覆盖
     try {
       const res: any = await api.get("/geo/ip-location");
-      if (res?.success && res.data) {
+      if (res?.success && res.data && !userLocation) {
         const { lat, lng, province, city } = res.data;
         const label = province ? `${province}${city || ""}` : "IP";
         setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (${label})`);
