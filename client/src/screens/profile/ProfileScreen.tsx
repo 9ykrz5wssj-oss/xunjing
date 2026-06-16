@@ -244,7 +244,16 @@ export function ProfileScreen({ navigation }: any) {
             <TouchableOpacity
               style={styles.downloadButton}
               activeOpacity={0.7}
-              onPress={() => { if (typeof window !== "undefined") window.open("https://seekwhale.cn/app-release.apk", "_blank"); }}
+              onPress={() => {
+                if (typeof document !== "undefined") {
+                  const a = document.createElement("a");
+                  a.href = "/app-release.apk";
+                  a.download = "寻鲸.apk";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }
+              }}
             >
               <Text style={styles.downloadButtonText}>📱 下载App（仅限安卓）</Text>
               <Text style={styles.downloadButtonHint}>安装后可使用完整定位功能</Text>
