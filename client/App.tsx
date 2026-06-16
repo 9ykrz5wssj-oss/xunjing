@@ -4,7 +4,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, Alert, Linking, Platform, Modal, View, Text, TouchableOpacity } from "react-native";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { useAuthStore } from "./src/store/authStore";
-import api from "./src/services/api";
 
 const LOCAL_VERSION = "1.0.1"; // 与app.json一致
 
@@ -25,11 +24,13 @@ export default function App() {
 
   // ── 版本检查：App启动时比对服务端版本 ──
   useEffect(() => {
-    api.get("/version").then((res: any) => {
-      if (res?.success && res.version && isNewer(res.version, LOCAL_VERSION)) {
-        setUpdateVisible(true);
-      }
-    }).catch(() => {});
+    fetch("https://seekwhale.cn/api/version")
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (data?.success && data.version && isNewer(data.version, LOCAL_VERSION)) {
+          setUpdateVisible(true);
+        }
+      }).catch(() => {});
   }, []);
 
   useEffect(() => {
