@@ -81,9 +81,10 @@ export function MapScreen() {
     return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) };
   };
 
-  // GPS定位：严格和网页版一致：请求最高精度→WGS84转GCJ02
+  // GPS定位：AMap原生（返回GCJ02）→ expo-location兜底（WGS84转GCJ02）
   useEffect(() => {
     let dead = false;
+    let amapSub: any = null;
     let expoWatch: any = null;
 
     const update = (lat: number, lng: number) => {
@@ -96,60 +97,34 @@ export function MapScreen() {
       if (s?.connected) s.emit("location_update", { lat, lng, campus });
     };
 
-    (async () => {
-      // 1. 请求权限
-      let perm;
-      try {
-        perm = await Location.requestForegroundPermissionsAsync();
-        if (dead) return;
-      } catch (e: any) {
-        if (!dead) setGpsLabel("⚠️ 权限请求失败: " + (e?.message || "未知"));
-        return;
+    // 高德原生模块（中国安卓最优方案，返回GCJ02无需转换）
+    try {
+      const { NativeModules: NM, DeviceEventEmitter: DEE } = require("react-native");
+      if (NM.AMapLocationModule) {
+        amapSub = DEE.addListener("AMapLocation", (data: any) => update(data.latitude, data.longitude));
+        NM.AMapLocationModule.start();
       }
-      if (!perm || perm.status !== "granted") {
-        if (!dead) setGpsLabel("⚠️ 定位权限未授权，请在系统设置中开启");
-        return;
-      }
+    } catch {}
 
-      // 2. 获取位置（Accuracy=6 最高，等同于网页 enableHighAccuracy:true）
-      if (!dead) setGpsLabel("📍 正在获取位置...");
+    // expo-location兜底（iOS及无AMap设备）
+    (async () => {
       try {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-          timeout: 30000,
-        });
-        if (dead) return;
-        if (pos?.coords) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (dead || status !== "granted") return;
+        setGpsLabel("📍 正在获取位置...");
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High, timeout: 15000 });
+        if (!dead && pos?.coords) {
           const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
           update(gcj.lat, gcj.lng);
-        } else {
-          setGpsLabel("⚠️ 获取位置返回空数据");
         }
-      } catch (e: any) {
-        if (!dead) {
-          const msg = e?.message || e?.code || "未知";
-          setGpsLabel("⚠️ 获取位置失败: " + msg);
-        }
-        return;
-      }
-
-      // 3. 持续追踪
-      try {
         expoWatch = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 5 },
-          (pos: any) => {
-            if (!dead && pos?.coords) {
-              const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
-              update(gcj.lat, gcj.lng);
-            }
-          }
+          (pos: any) => { if (!dead && pos?.coords) { const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude); update(gcj.lat, gcj.lng); } }
         );
-      } catch (e: any) {
-        // watch失败不影响已有的一次定位
-      }
+      } catch {}
     })();
 
-    return () => { dead = true; if (expoWatch) expoWatch.remove(); };
+    return () => { dead = true; if (amapSub) amapSub.remove(); if (expoWatch) expoWatch.remove(); try { const { NativeModules: NM } = require("react-native"); NM.AMapLocationModule?.stop(); } catch {} };
   }, []);
 
   // 缓存位置就绪后，若 WebView 已就绪 → 直接定位
