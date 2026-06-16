@@ -253,23 +253,7 @@ export function MapScreen() {
         const s = getCurrentSocket();
         if (s?.connected) s.emit("location_update", { lat: d.lat, lng: d.lng, campus });
       }
-      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); /* 不自动IP兜底，避免跳到北京 */ }
-    } catch {}
-  };
-
-  // IP定位兜底（仅手动触发，不自动覆盖GPS位置）
-  const fetchIPFallback = async () => {
-    if (userLocation) return;
-    try {
-      const res: any = await api.get("/geo/ip-location");
-      if (res?.success && res.data && !userLocation) {
-        const { lat, lng, province, city } = res.data;
-        const label = province ? `${province}${city || ""}` : "IP";
-        setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (${label})`);
-        setUserLocation({ lat, lng });
-        setCachedLocation({ lat, lng, campus });
-        wv.current?.postMessage(JSON.stringify({ type: "userLoc", lat, lng }));
-      }
+      if (d.type === "geoError") { setGpsLabel(`⚠️ ${d.msg}`); }
     } catch {}
   };
 
@@ -432,7 +416,7 @@ export function MapScreen() {
 </style></head><body>
 <div id="map"></div><div class="loader" id="ldr"><div class="s"></div>加载地图</div>
 <script>
-var map, cl, ud, wId;
+var map, cl, ud;
 var userLocFirst=true;
 function showUL(lat,lng){
   if(ud){map.removeLayer(ud);}
@@ -441,58 +425,7 @@ function showUL(lat,lng){
   if(userLocFirst){userLocFirst=false;map.setView([lat,lng],Math.max(map.getZoom(),16));}
   window.ReactNativeWebView.postMessage(JSON.stringify({type:'userCoords',lat:lat,lng:lng}));
 }
-var _gpsStarted=false;
-function startGPS(){
-  if(!navigator.geolocation){
-    window.ReactNativeWebView.postMessage(JSON.stringify({type:'geoError',msg:'设备不支持GPS'}));
-    return;
-  }
-  // Phase 1: 网络/WiFi/基站定位 — 1~3秒快速返回，所有iOS/Android通用
-  navigator.geolocation.getCurrentPosition(
-    function(p){
-      _gpsStarted=true;
-      showUL(p.coords.latitude, p.coords.longitude);
-    },
-    function(err){
-      // 网络定位失败罕见（设备无WiFi/基站），不阻断
-    },
-    {enableHighAccuracy:false, timeout:10000, maximumAge:120000}
-  );
-  // Phase 2: GPS高精度精修 — 给芯片充足冷启动时间(最长30s)
-  navigator.geolocation.getCurrentPosition(
-    function(p){
-      _gpsStarted=true;
-      showUL(p.coords.latitude, p.coords.longitude);
-    },
-    function(err){
-      if(!_gpsStarted){
-        var msgs={1:'请开启定位权限',2:'定位信号弱',3:'定位超时'};
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type:'geoError',
-          msg: msgs[err.code] || ('定位失败('+err.code+')')
-        }));
-      }
-    },
-    {enableHighAccuracy:true, timeout:30000, maximumAge:60000}
-  );
-  // watchPosition 持续追踪
-  wId=navigator.geolocation.watchPosition(
-    function(p){
-      _gpsStarted=true;
-      showUL(p.coords.latitude, p.coords.longitude);
-    },
-    function(err){
-      if(!_gpsStarted){
-        var msgs={1:'请开启定位权限',2:'定位信号弱',3:'定位超时'};
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type:'geoError',
-          msg: msgs[err.code] || ('定位失败('+err.code+')')
-        }));
-      }
-    },
-    {enableHighAccuracy:true, timeout:30000, maximumAge:60000, distanceFilter:5}
-  );
-}
+// GPS完全由RN端expo-location负责，HTML不再自启定位
 function init(){
   try{
     map=L.map('map',{center:[${CAMPUS_CENTERS.gulou.lat},${CAMPUS_CENTERS.gulou.lng}],zoom:${CAMPUS_CENTERS.gulou.zoom},zoomControl:false,attributionControl:false});
@@ -500,7 +433,7 @@ function init(){
     cl=L.layerGroup().addTo(map);L.control.zoom({position:'bottomright'}).addTo(map);
     document.getElementById('ldr').style.display='none';
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapReady'}));
-    startGPS();
+    // 不在这里调startGPS，GPS完全由RN端的expo-location负责
   }catch(e){document.getElementById('ldr').innerHTML='加载失败';window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapError'}));}
 }
 function updateMarkers(chests,events){
@@ -529,7 +462,6 @@ document.addEventListener('message',function(e){
     if(d.type==='updateMarkers'&&map)updateMarkers(d.chests,d.events);
     if(d.type==='userLoc'&&map)showUL(d.lat,d.lng);
     if(d.type==='centerOnUser'&&ud){var pos=ud.getLatLng();if(pos)map.setView([pos.lat,pos.lng],Math.max(map.getZoom(),16));}
-    if(d.type==='startGPS'&&typeof startGPS==='function')startGPS();
   }catch(err){}
 });
 setTimeout(function(){if(!map){document.getElementById('ldr').innerHTML='加载超时';window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapError'}));}},25000);
@@ -547,16 +479,6 @@ init();
       {gpsLabel ? (
         <View style={styles.gb}>
           <Text style={styles.gt}>{gpsLabel}</Text>
-          {gpsLabel.startsWith("⚠") && (
-            <T style={styles.gr} onPress={() => {
-              setGpsLabel("🔄 重新定位中...");
-              if (wv.current && mapState === "ready") {
-                wv.current.postMessage(JSON.stringify({ type: "startGPS" }));
-              }
-            }} activeOpacity={0.7}>
-              <Text style={styles.grt}>🔄 重试</Text>
-            </T>
-          )}
         </View>
       ) : null}
       <View style={{ flex: 1 }}>
