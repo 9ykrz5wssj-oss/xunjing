@@ -89,6 +89,62 @@ copy app\build\outputs\apk\release\app-release.apk C:\Users\21198\Desktop\app-re
 6. 中文路径NDK不支持
 7. 自适应图标删除mipmap-anydpi-v26
 
+## 🔴 GPS定位架构（每任Claude必读！！！）
+
+### 两套代码，两套定位策略
+
+| 端 | 文件 | 定位方式 | 坐标系 |
+|------|------|------|------|
+| Web | `MapScreen.tsx` | `navigator.geolocation.watchPosition({enableHighAccuracy:true})` | WGS84→GCJ02转换 |
+| App | `MapScreen.native.tsx` | AMap原生模块(GCJ02直接) → expo-location兜底(WGS84→GCJ02) | 高德地图用GCJ02 |
+
+### App定位调用链
+```
+AMapLocationModule (原生Java→高德SDK→GCJ02,无需转换)
+  ↓ 失败或不存在
+expo-location (requestPermissions→getCurrentPosition→WGS84转GCJ02)
+  ↓ 失败
+显示错误提示，不跳IP兜底
+```
+
+### 致命教训：AMap SDK隐私合规（2026.06.16，耗费4小时+）
+
+**问题**：App定位一直失败，logcat显示：
+```
+AMapLocationClient: 确保调用SDK任何接口前先调用updatePrivacyShow、updatePrivacyAgree
+```
+
+**根因**：AMap SDK 6.4.7+ 强制要求在创建`AMapLocationClient`之前调用两个隐私合规接口，否则SDK静默拒绝工作（不报错、不崩溃、不回调）。
+
+**修复** `campus-app/.../AMapLocationModule.java` 的 `start()` 方法，在 `new AMapLocationClient()` 之前加：
+```java
+AMapLocationClient.updatePrivacyShow(context, true, true);
+AMapLocationClient.updatePrivacyAgree(context, true);
+```
+
+**教训**：
+- `latest.integration` 会导致SDK版本不可控，用固定版本`6.4.7`
+- AMap SDK静默失败时检查：①隐私合规 ②AndroidManifest API key ③libapssdk.so是否打包
+- 调试GPS必须连ADB：`adb logcat -s ReactNativeJS:I` 看JS日志，`grep -i amap` 看SDK日志
+
+### ADB调试GPS的完整流程
+```bash
+# 必须是bash（Git Bash），PowerShell不支持
+export PATH="$PATH:/c/Android/platform-tools"
+adb devices                          # 确认设备连接
+adb install -r <apk路径>             # 安装APK
+adb logcat -c                        # 清日志
+adb shell am start -n com.wangyixang.campus/.MainActivity  # 启动App
+timeout 20 adb logcat -s ReactNativeJS:I  # 抓JS日志
+adb logcat -d | grep -i amap         # 抓AMap SDK日志
+```
+
+### 不要做的事（血的教训）
+- **不要在任何地方调用IP定位兜底**——服务器在北京，会把地图拉到北京
+- **不要在WebView HTML里用navigator.geolocation**——非HTTPS页面被系统拒绝
+- **不要缓存用户位置作为地图初始中心**——旧错误位置会污染新会话
+- **不要改MapScreen.tsx的GPS**——网页版有自己的逻辑，互不影响
+
 ## 🔴 本次会话中的严重失误
 
 ### 1. JSX布局反复失败
