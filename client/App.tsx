@@ -5,7 +5,7 @@ import { StyleSheet, Alert, Linking, Platform, Modal, View, Text, TouchableOpaci
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { useAuthStore } from "./src/store/authStore";
 
-const LOCAL_VERSION = "1.0.1"; // 与app.json一致
+const LOCAL_VERSION = "1.0.2"; // 与app.json一致
 
 function isNewer(server: string, local: string): boolean {
   const a = server.split(".").map(Number);

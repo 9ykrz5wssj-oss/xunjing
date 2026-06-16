@@ -61,7 +61,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ── 版本号（改这里触发全端更新提示） ──
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.0.2";
 app.get("/api/version", (_req, res) => {
   res.json({ success: true, version: APP_VERSION });
 });
