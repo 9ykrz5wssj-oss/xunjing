@@ -57,9 +57,7 @@ export function MapScreen() {
       const loc = await getCachedLocation();
       if (loc) {
         if (loc.campus !== Campus.GULOU) setCampus(loc.campus);
-        // 缓存位置仅用于预填，不替代GPS定位——避免旧的错误位置（如北京）持续显示
-        setUserLocation({ lat: loc.lat, lng: loc.lng });
-        setGpsLabel(`📍 ${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)} (上次位置)`);
+        // 不用缓存位置，等GPS新数据
       }
       // 预载宝箱和活动缓存
       const campusKey = loc?.campus || Campus.GULOU;
@@ -83,7 +81,7 @@ export function MapScreen() {
     return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) };
   };
 
-  // GPS定位：请求权限→获取最高精度位置→WGS84转GCJ02
+  // GPS定位：严格和网页版一致：请求最高精度→WGS84转GCJ02
   useEffect(() => {
     let dead = false;
     let expoWatch: any = null;
@@ -99,24 +97,46 @@ export function MapScreen() {
     };
 
     (async () => {
+      // 1. 请求权限
+      let perm;
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        perm = await Location.requestForegroundPermissionsAsync();
         if (dead) return;
-        if (status !== "granted") { setGpsLabel("⚠️ 定位权限未授权"); return; }
+      } catch (e: any) {
+        if (!dead) setGpsLabel("⚠️ 权限请求失败: " + (e?.message || "未知"));
+        return;
+      }
+      if (!perm || perm.status !== "granted") {
+        if (!dead) setGpsLabel("⚠️ 定位权限未授权，请在系统设置中开启");
+        return;
+      }
 
-        setGpsLabel("📍 正在获取位置...");
-        // 直接获取最高精度位置
+      // 2. 获取位置（Accuracy=6 最高，等同于网页 enableHighAccuracy:true）
+      if (!dead) setGpsLabel("📍 正在获取位置...");
+      try {
         const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-          timeout: 30000,
+          accuracy: 6, // BestForNavigation，网页 enableHighAccuracy:true 的等价设置
+          timeInterval: 1000,
         });
-        if (!dead && pos?.coords) {
+        if (dead) return;
+        if (pos?.coords) {
           const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
           update(gcj.lat, gcj.lng);
+        } else {
+          setGpsLabel("⚠️ 获取位置返回空数据");
         }
-        // 持续追踪
+      } catch (e: any) {
+        if (!dead) {
+          const msg = e?.message || e?.code || "未知";
+          setGpsLabel("⚠️ 获取位置失败: " + msg);
+        }
+        return;
+      }
+
+      // 3. 持续追踪
+      try {
         expoWatch = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 8 },
+          { accuracy: 6, timeInterval: 3000, distanceInterval: 5 },
           (pos: any) => {
             if (!dead && pos?.coords) {
               const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
@@ -125,7 +145,7 @@ export function MapScreen() {
           }
         );
       } catch (e: any) {
-        if (!dead) setGpsLabel(`⚠️ ${e?.message || '定位失败'}`);
+        // watch失败不影响已有的一次定位
       }
     })();
 
