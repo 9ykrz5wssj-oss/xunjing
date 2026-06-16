@@ -239,6 +239,18 @@ export function ProfileScreen({ navigation }: any) {
         {/* ── 底部操作 ── */}
         <View style={styles.actionsSection}>
 
+          {/* 下载App（仅Web端显示） */}
+          {Platform.OS === "web" && (
+            <TouchableOpacity
+              style={styles.downloadButton}
+              activeOpacity={0.7}
+              onPress={() => { if (typeof window !== "undefined") window.open("https://seekwhale.cn/app-release.apk", "_blank"); }}
+            >
+              <Text style={styles.downloadButtonText}>📱 下载App（仅限安卓）</Text>
+              <Text style={styles.downloadButtonHint}>安装后可使用完整定位功能</Text>
+            </TouchableOpacity>
+          )}
+
           {/* 问题反馈入口 */}
           <TouchableOpacity
             style={styles.feedbackButton}
@@ -486,6 +498,23 @@ const styles = StyleSheet.create({
     width: "100%",
     marginTop: spacing.lg,
     gap: spacing.sm,
+  },
+  downloadButton: {
+    backgroundColor: "#27AE60",
+    borderRadius: borderRadius.xl,
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  downloadButtonText: {
+    ...typography.bodyBold,
+    color: "#FFF",
+    fontSize: 16,
+  },
+  downloadButtonHint: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: spacing.xs,
   },
   feedbackButton: {
     backgroundColor: colors.surface,
