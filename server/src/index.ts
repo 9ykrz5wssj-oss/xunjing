@@ -66,6 +66,12 @@ app.get("/api/version", (_req, res) => {
   res.json({ success: true, version: APP_VERSION });
 });
 
+// ── APK 下载（直接走Express，绕过nginx浏览器限制） ──
+const apkPath = path.resolve("/var/www/seekwhale/app-release.apk");
+app.get("/app-release.apk", (_req, res) => {
+  res.download(apkPath, "寻鲸.apk");
+});
+
 // ── API 路由 ──
 app.use("/api/v1/auth", authRoutes);
 
