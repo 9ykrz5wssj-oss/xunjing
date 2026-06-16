@@ -24,7 +24,7 @@ export default function App() {
 
   // ── 版本检查：App启动时比对服务端版本 ──
   useEffect(() => {
-    fetch("https://seekwhale.cn/api/version")
+    fetch("http://124.222.230.80:3000/api/version")
       .then((r) => r.json())
       .then((data: any) => {
         if (data?.success && data.version && isNewer(data.version, LOCAL_VERSION)) {
