@@ -115,8 +115,8 @@ export function MapScreen() {
       if (!dead) setGpsLabel("📍 正在获取位置...");
       try {
         const pos = await Location.getCurrentPositionAsync({
-          accuracy: 6, // BestForNavigation，网页 enableHighAccuracy:true 的等价设置
-          timeInterval: 1000,
+          accuracy: Location.Accuracy.High,
+          timeout: 30000,
         });
         if (dead) return;
         if (pos?.coords) {
@@ -136,7 +136,7 @@ export function MapScreen() {
       // 3. 持续追踪
       try {
         expoWatch = await Location.watchPositionAsync(
-          { accuracy: 6, timeInterval: 3000, distanceInterval: 5 },
+          { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 5 },
           (pos: any) => {
             if (!dead && pos?.coords) {
               const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
