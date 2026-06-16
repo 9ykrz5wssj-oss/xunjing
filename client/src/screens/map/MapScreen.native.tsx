@@ -71,14 +71,26 @@ export function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 自定义高德原生定位
+  // WGS-84 → GCJ-02 坐标转换（与网页版MapScreen.tsx完全一致）
+  const wgs84ToGcj02 = (lat: number, lng: number) => {
+    const PI = Math.PI, A = 6378245, EE = 0.00669342162296594323;
+    const tLat = (x: number, y: number): number => { let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3; r += (160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3; return r; };
+    const tLng = (x: number, y: number): number => { let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r += (20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3; r += (150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3; return r; };
+    const dLat = tLat(lng-105, lat-35); const dLng = tLng(lng-105, lat-35);
+    const rad = lat/180*PI; let m = Math.sin(rad); m = 1-EE*m*m; const s = Math.sqrt(m);
+    return { lat: lat+(dLat*180)/((A*(1-EE))/(m*s)*PI), lng: lng+(dLng*180)/(A/s*Math.cos(rad)*PI) };
+  };
+
+  // GPS定位：expo-location主力（和网页版一样用系统GPS→转GCJ02） + AMap原生加速
   useEffect(() => {
     let dead = false;
     let amapSub: any = null;
     let expoWatch: any = null;
+    let gotFirstFix = false;
 
     const update = (lat: number, lng: number, src?: string) => {
       if (dead) return;
+      gotFirstFix = true;
       setGpsLabel(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}${src ? ` (${src})` : ""}`);
       setUserLocation({ lat, lng });
       setCachedLocation({ lat, lng, campus });
@@ -87,7 +99,7 @@ export function MapScreen() {
       if (s?.connected) s.emit("location_update", { lat, lng, campus });
     };
 
-    // 方式1：高德原生模块（Android优先，返回GCJ02无需转换）
+    // 方式1：高德原生模块（返回GCJ02，无需转换）
     const startAMap = () => {
       try {
         const { NativeModules: NM, DeviceEventEmitter: DEE } = require("react-native");
@@ -101,24 +113,35 @@ export function MapScreen() {
       } catch { return false; }
     };
 
-    // 方式2：expo-location 兜底（跨平台，返回WGS84需转GCJ02）
+    // 方式2：expo-location（和网页版逻辑一致：WGS84 → GCJ02 → 地图）
     const startExpo = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") { if (!dead) setGpsLabel("⚠️ 定位权限未授权"); return; }
+        // 先快速低精度，和网页版 enableHighAccuracy:false 一致
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeout: 10000 })
           .then((pos: any) => {
-            if (!dead && pos?.coords) update(pos.coords.latitude, pos.coords.longitude, "网络");
+            if (!dead && pos?.coords) {
+              const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+              update(gcj.lat, gcj.lng, "网络");
+            }
           }).catch(() => {});
+        // 持续高精度追踪
         expoWatch = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 8 },
-          (pos: any) => { if (!dead && pos?.coords) update(pos.coords.latitude, pos.coords.longitude); }
+          (pos: any) => {
+            if (!dead && pos?.coords) {
+              const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+              update(gcj.lat, gcj.lng);
+            }
+          }
         );
       } catch { if (!dead) setGpsLabel("⚠️ 定位不可用"); }
     };
 
+    // AMap 和 expo 同时启动：AMap快就直接用，慢了 expo 也已经在跑了
     const amapOk = startAMap();
-    if (!amapOk) startExpo();
+    startExpo(); // 不论AMap是否可用，expo都作为主力/兜底
 
     return () => {
       dead = true;
