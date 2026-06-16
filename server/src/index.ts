@@ -60,6 +60,12 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+// ── 版本号（改这里触发全端更新提示） ──
+const APP_VERSION = "1.0.0";
+app.get("/api/version", (_req, res) => {
+  res.json({ success: true, version: APP_VERSION });
+});
+
 // ── API 路由 ──
 app.use("/api/v1/auth", authRoutes);
 

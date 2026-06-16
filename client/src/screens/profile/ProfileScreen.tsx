@@ -242,7 +242,7 @@ export function ProfileScreen({ navigation }: any) {
           {/* 下载App（仅Web端显示） */}
           {Platform.OS === "web" && (
             <TouchableOpacity
-              style={styles.downloadButton}
+              style={styles.feedbackButton}
               activeOpacity={0.7}
               onPress={() => {
                 if (typeof document !== "undefined") {
@@ -255,8 +255,7 @@ export function ProfileScreen({ navigation }: any) {
                 }
               }}
             >
-              <Text style={styles.downloadButtonText}>📱 下载App（仅限安卓）</Text>
-              <Text style={styles.downloadButtonHint}>安装后可使用完整定位功能</Text>
+              <Text style={styles.feedbackButtonText}>📱 下载App（仅限安卓）</Text>
             </TouchableOpacity>
           )}
 
