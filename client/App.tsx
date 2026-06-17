@@ -22,8 +22,9 @@ export default function App() {
   const { initialize } = useAuthStore();
   const [updateVisible, setUpdateVisible] = useState(false);
 
-  // ── 版本检查：App启动时比对服务端版本 ──
+  // ── 版本检查：仅App端（Web刷新即更新，无需弹窗） ──
   useEffect(() => {
+    if (Platform.OS === "web") return;
     fetch("http://124.222.230.80:3000/api/version")
       .then((r) => r.json())
       .then((data: any) => {
