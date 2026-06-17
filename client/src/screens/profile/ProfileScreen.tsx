@@ -247,8 +247,7 @@ export function ProfileScreen({ navigation }: any) {
               onPress={() => {
                 if (typeof document !== "undefined") {
                   const a = document.createElement("a");
-                  a.href = "/app-release.apk";
-                  a.download = "寻鲸.apk";
+                  a.href = "https://1860106482.share.123pan.cn/123pan/P0czvd-UnYTd";
                   document.body.appendChild(a);
                   a.click();
                   document.body.removeChild(a);
