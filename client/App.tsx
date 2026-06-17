@@ -73,7 +73,7 @@ export default function App() {
                 <Text style={um.cancelText}>稍后再说</Text>
               </TouchableOpacity>
               <TouchableOpacity style={um.dlBtn} onPress={() => {
-                Linking.openURL("https://1860106482.share.123pan.cn/123pan/P0czvd-UnYTd");
+                Linking.openURL("https://seekwhale.cn/app-release.apk");
               }} activeOpacity={0.7}>
                 <Text style={um.dlText}>⬇ 立即下载</Text>
               </TouchableOpacity>
