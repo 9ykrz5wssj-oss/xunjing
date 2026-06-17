@@ -66,25 +66,11 @@ app.get("/api/version", (_req, res) => {
   res.json({ success: true, version: APP_VERSION });
 });
 
-// ── APK 下载：COS 签名直链（走腾讯云带宽，不限速） ──
-const COS = require("cos-nodejs-sdk-v5");
-const cos = new COS({
-  SecretId: process.env.COS_SECRET_ID || "",
-  SecretKey: process.env.COS_SECRET_KEY || "",
-});
-const COS_KEY = "app-release.zip";
-const COS_BUCKET = process.env.COS_BUCKET || "seekwhale-1440069782";
-const COS_REGION = process.env.COS_REGION || "ap-nanjing";
-
+// ── APK 下载 ──
+const apkPath = path.resolve("/var/www/seekwhale/app-release.apk");
 app.get("/app-release.apk", (_req, res) => {
-  const url = cos.getObjectUrl({
-    Bucket: COS_BUCKET,
-    Region: COS_REGION,
-    Key: COS_KEY,
-    Sign: true,
-    Expires: 3600,
-  });
-  res.redirect(302, url);
+  res.setHeader("Content-Type", "application/vnd.android.package-archive");
+  res.download(apkPath, "寻鲸.apk");
 });
 
 // ── API 路由 ──
