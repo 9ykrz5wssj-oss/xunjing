@@ -161,6 +161,38 @@ adb logcat -d | grep -i amap         # 抓AMap SDK日志
 - **不能用 `https://seekwhale.cn/api/version`**：RN环境fetch对HTTPS可能抛 `SocketException: Connection reset`
 - **必须用 `http://124.222.230.80:3000/api/version`**：HTTP直连最稳定
 
+## 📦 APK下载与分发（血的教训）
+
+### 现状
+- APK大小：~83MB（含所有ABI）
+- 服务器带宽：~350KB/s（腾讯云轻量 3Mbps）
+- 下载耗时：约4分钟
+- 下载方式：nginx直出 `/var/www/seekwhale/app-release.apk`（sendfile零拷贝）
+- 弹窗/网页下载按钮均指向 `https://seekwhale.cn/app-release.apk`
+
+### 试过的免费方案（全失败）
+| 方案 | 失败原因 |
+|------|------|
+| 腾讯云COS默认域名 | 检测文件内容，APK无论改什么后缀都被拦 |
+| 蓝奏云 | 拦APK上传 |
+| 123云盘 | 分享页手机端打不开 |
+| Gitee仓库 | 单文件限制50MB，APK 83MB超限 |
+
+### COS方案（需备案域名）
+腾讯云COS+自定义域名完美解决，但需ICP备案。seekwhale.cn目前未备案。
+
+### 后续优化方向
+1. 升级VPS带宽：腾讯云控制台3Mbps→10Mbps（几块钱/月），4分钟→1分钟
+2. 备案域名+COS CDN：不限速，终极方案
+3. 分架构编译：只打arm64-v8a，APK~45MB，时间减半
+4. CloudFlare R2：免费10GB+不限下载，需测试中国访问速度
+
+### 每次Web部署后必做
+```bash
+scp "C:/Users/21198/Desktop/app-release.apk" ubuntu@124.222.230.80:/tmp/
+ssh ubuntu@124.222.230.80 "sudo cp /tmp/app-release.apk /var/www/seekwhale/ && sudo chmod 644 /var/www/seekwhale/app-release.apk"
+```
+
 ## 🔴 本次会话中的严重失误
 
 ### 1. JSX布局反复失败
