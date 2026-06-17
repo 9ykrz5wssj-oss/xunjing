@@ -61,14 +61,15 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ── 版本号（改这里触发全端更新提示） ──
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 app.get("/api/version", (_req, res) => {
   res.json({ success: true, version: APP_VERSION });
 });
 
-// ── APK 下载（直接走Express，绕过nginx浏览器限制） ──
+// ── APK 下载 ──
 const apkPath = path.resolve("/var/www/seekwhale/app-release.apk");
 app.get("/app-release.apk", (_req, res) => {
+  res.setHeader("Content-Type", "application/vnd.android.package-archive");
   res.download(apkPath, "寻鲸.apk");
 });
 
