@@ -177,6 +177,8 @@ adb logcat -d | grep -i amap         # 抓AMap SDK日志
 | 蓝奏云 | 拦APK上传 |
 | 123云盘 | 分享页手机端打不开 |
 | Gitee仓库 | 单文件限制50MB，APK 83MB超限 |
+| CloudFlare R2 | 需付费订阅 |
+| 七牛云 | 测试域名明确禁止APK下载 |
 
 ### COS方案（需备案域名）
 腾讯云COS+自定义域名完美解决，但需ICP备案。seekwhale.cn目前未备案。
