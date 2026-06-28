@@ -7,6 +7,7 @@ import { colors, typography, spacing, borderRadius } from "../../theme";
 import { MessageBubble } from "../../components/MessageBubble";
 import { getGroupChatHistory } from "../../services/chat.api";
 import api from "../../services/api";
+import { getSocket, getCurrentSocket } from "../../socket/socketClient";
 import { MessageData } from "../../types";
 import { useAuthStore } from "../../store/authStore";
 
@@ -25,6 +26,8 @@ export function GroupChatScreen({ route, navigation }: any) {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const EMOJIS = ["😊","😂","❤️","👍","🎉","🔥","😍","🤔","👋","💪","🙏","✨","🌟","💯","🥳"];
   const flatListRef = useRef<FlatList>(null);
+  const socketRef = useRef(getCurrentSocket());
+  const nearBottomRef = useRef(true);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -33,7 +36,59 @@ export function GroupChatScreen({ route, navigation }: any) {
     } catch {}
   }, [eventId]);
 
-  useEffect(() => { loadMessages(); const t = setInterval(loadMessages, 5000); return () => clearInterval(t); }, [loadMessages]);
+  // 初始加载 + 后台轮询兜底
+  useEffect(() => { loadMessages(); const t = setInterval(loadMessages, 30000); return () => clearInterval(t); }, [loadMessages]);
+
+  // Socket 实时监听群聊消息
+  useEffect(() => {
+    let cancelled = false;
+    const setupSocket = async () => {
+      const socket = await getSocket();
+      if (!socket || cancelled) return;
+      socketRef.current = socket;
+
+      socket.emit("join_event_chat", { eventId });
+
+      const handleNewGroupMessage = (data: any) => {
+        if (cancelled) return;
+        if (data.eventId === eventId && data.message.senderId !== (user?.id || user?._id)) {
+          setMessages((prev) => [...prev, data.message]);
+          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        }
+      };
+
+      const handleMessageRevoked = (data: any) => {
+        if (cancelled || !data?.messageId) return;
+        if (data.conversationId && data.conversationId !== `event_${eventId}`) return;
+        setMessages((prev) => prev.map((m) =>
+          m._id === data.messageId ? { ...m, isRevoked: true } : m
+        ));
+      };
+
+      const handleMessageDeleted = (data: any) => {
+        if (cancelled || !data?.messageId) return;
+        if (data.conversationId && data.conversationId !== `event_${eventId}`) return;
+        setMessages((prev) => prev.filter((m) => m._id !== data.messageId));
+      };
+
+      socket.on("new_group_message", handleNewGroupMessage);
+      socket.on("message_revoked", handleMessageRevoked);
+      socket.on("message_deleted", handleMessageDeleted);
+
+      return () => {
+        socket.off("new_group_message", handleNewGroupMessage);
+        socket.off("message_revoked", handleMessageRevoked);
+        socket.off("message_deleted", handleMessageDeleted);
+        socket.emit("leave_event_chat", { eventId });
+      };
+    };
+
+    const promise = setupSocket();
+    return () => {
+      cancelled = true;
+      promise.then((fn) => fn?.());
+    };
+  }, [eventId, user?.id, user?._id]);
 
   // 键盘避让：监听键盘高度，将输入框顶到键盘正上方
   useEffect(() => {
@@ -121,7 +176,7 @@ export function GroupChatScreen({ route, navigation }: any) {
     try { await api.post(`/chat/group/${eventId}`, { content: text, contentType: "text" }); } catch {}
   };
 
-  const renderMessage = ({ item, index }: { item: MessageData; index: number }) => {
+  const renderMessage = useCallback(({ item, index }: { item: MessageData; index: number }) => {
     const isMine = String(item.senderId) === String(user?.id || user?._id || "");
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showAvatar = !prevMsg || prevMsg.senderId !== item.senderId;
@@ -197,7 +252,7 @@ export function GroupChatScreen({ route, navigation }: any) {
         </View>
       </View>
     );
-  };
+  }, [menuIndex, user?.id, user?._id, messages]);
 
   return (
     <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
@@ -211,18 +266,23 @@ export function GroupChatScreen({ route, navigation }: any) {
         </View>
       </View>
 
-      <TouchableOpacity
-        style={{ flex: 1 }}
-        activeOpacity={1}
-        onPress={menuIndex != null || contextMenu != null ? () => { setMenuIndex(null); setContextMenu(null); } : undefined}
-      >
+      <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(_, index) => `gmsg-${index}`}
+          keyExtractor={(item) => item._id || `${item.senderId}-${item.createdAt}`}
           renderItem={renderMessage}
+          removeClippedSubviews={Platform.OS === "android"}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          initialNumToRender={20}
           contentContainerStyle={[styles.msgList, messages.length === 0 && styles.msgListEmpty]}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() => { if (nearBottomRef.current) { flatListRef.current?.scrollToEnd({ animated: false }); } }}
+          onScroll={(e: any) => {
+            const { contentSize, contentOffset, layoutMeasurement } = e.nativeEvent;
+            const dist = contentSize.height - contentOffset.y - layoutMeasurement.height;
+            nearBottomRef.current = dist < 200;
+          }}
           onScrollBeginDrag={() => { setMenuIndex(null); setContextMenu(null); }}
           scrollEventThrottle={16}
           ListEmptyComponent={
@@ -232,7 +292,7 @@ export function GroupChatScreen({ route, navigation }: any) {
             </View>
           }
         />
-      </TouchableOpacity>
+      </View>
 
       {!readOnly && (
         <View style={styles.inputBar}>

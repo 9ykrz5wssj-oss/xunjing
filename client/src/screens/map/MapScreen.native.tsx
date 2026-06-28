@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform, ScrollView, Pressable } from "react-native";
 import * as Location from "expo-location";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 
@@ -11,8 +11,9 @@ if (Platform.OS !== "web") {
   try { WebView = require("react-native-webview").WebView; } catch {}
 }
 import { colors, typography, spacing, borderRadius } from "../../theme";
-import { Campus, CAMPUS_NAMES } from "../../utils/constants";
+import { Campus, CAMPUS_NAMES, CAMPUS_BOUNDS } from "../../utils/constants";
 import { getActiveChests } from "../../services/chest.api";
+import { getActiveNotes } from "../../services/note.api";
 import { getSocket, getCurrentSocket } from "../../socket/socketClient";
 import api, { fixImageUrl } from "../../services/api";
 import {
@@ -22,11 +23,15 @@ import {
   setCachedChests,
   getCachedEvents,
   setCachedEvents,
+  getCachedBounds,
+  setCachedBounds,
+  CampusBoundData,
 } from "../../utils/mapCache";
 
 const CAMPUS_CENTERS: Record<Campus, { lng: number; lat: number; zoom: number }> = {
   gulou: { lng: 118.7750, lat: 32.0575, zoom: 16 },
   xianlin: { lng: 118.9500, lat: 32.1170, zoom: 15 },
+  suzhou: { lng: 120.5230, lat: 31.3230, zoom: 15 },
 };
 
 export function MapScreen() {
@@ -35,6 +40,9 @@ export function MapScreen() {
   const [chests, setChests] = useState<any[]>([]);
   const [cooldowns, setCooldowns] = useState<{normal:number,advanced:number}>({normal:0,advanced:0});
   const [events, setEvents] = useState<any[]>([]);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [noteResult, setNoteResult] = useState<any>(null);
+  const [showNoteResult, setShowNoteResult] = useState(false);
   const [mapState, setMapState] = useState<"loading" | "ready" | "failed">("loading");
   const [gpsLabel, setGpsLabel] = useState("");
   // 弹窗状态
@@ -47,7 +55,23 @@ export function MapScreen() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [nearbyCounts, setNearbyCounts] = useState<Record<string, number>>({});
   const [initialCenter, setInitialCenter] = useState<{ lat: number; lng: number; zoom: number } | null>(null);
+  const [bounds, setBounds] = useState<Record<string, CampusBoundData>>(CAMPUS_BOUNDS);
   const socketRef = useRef<any>(null);
+
+  // 从服务器获取校区边界
+  useEffect(() => {
+    (async () => {
+      try { const cached = await getCachedBounds(); if (cached) { setBounds(cached); return; } } catch {}
+      try {
+        const res = await api.get("/map/campus-bounds");
+        if ((res as any).success && (res as any).data) {
+          const map: Record<string, CampusBoundData> = { ...CAMPUS_BOUNDS };
+          ((res as any).data).forEach((c: any) => { map[c.campus] = { minLat: c.minLat, maxLat: c.maxLat, minLng: c.minLng, maxLng: c.maxLng }; });
+          setBounds(map); setCachedBounds(map).catch(() => {});
+        }
+      } catch {}
+    })();
+  }, []);
   const wv = useRef<WebView>(null);
   const isFirstFocusRef = useRef(true);
 
@@ -141,10 +165,11 @@ export function MapScreen() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [cR, eR] = await Promise.all([getActiveChests(campus), api.get("/map/activity-pins", { params: { campus } })]);
+      const [cR, eR, nR] = await Promise.all([getActiveChests(campus), api.get("/map/activity-pins", { params: { campus } }), getActiveNotes(campus)]);
       const chestData = cR.data || [];
       const cooldownData = (cR as any).cooldowns || { normal: 0, advanced: 0 };
       const eventData = (eR as any)?.data || [];
+      const noteData = nR.data || [];
 
       if (cR.success && cR.data) { setChests(chestData); setCooldowns(cooldownData);
         setCachedChests(campus, { chests: chestData, cooldowns: cooldownData });
@@ -152,8 +177,9 @@ export function MapScreen() {
       if (eR && (eR as any).success) { setEvents(eventData);
         setCachedEvents(campus, eventData);
       }
+      if (nR.success) setNotes(noteData);
       if (wv.current && mapState === "ready") {
-        wv.current.postMessage(JSON.stringify({ type: "updateMarkers", chests: chestData, events: eventData }));
+        wv.current.postMessage(JSON.stringify({ type: "updateMarkers", chests: chestData, events: eventData, notes: noteData }));
       }
     } catch {}
   }, [campus, mapState]);
@@ -204,28 +230,31 @@ export function MapScreen() {
       s.on("chest_player_count", (data: any) => {
         setNearbyCounts((prev) => ({ ...prev, [data.chestId]: data.currentCount }));
       });
+      s.on("pickup_note_result", (d: any) => { if (d.success) { setNoteResult(d.data); setShowNoteResult(true); } else { setOpenResult({ success: false, error: d.error }); setShowResultModal(true); } });
+      s.on("note_removed", (d: any) => { setNotes(p => { const n2 = p.filter(n => n._id !== d.noteId); fetchAll(); return n2; }); });
     })();
     return () => {
       const s = socketRef.current;
-      if (s) { s.off("chest_open_result"); s.off("chest_player_count"); }
+      if (s) { s.off("chest_open_result"); s.off("chest_player_count"); s.off("pickup_note_result"); s.off("note_removed"); }
     };
   }, []);
 
   const switchCampus = (c: Campus) => {
     setCampus(c);
     if (wv.current && mapState === "ready") {
-      const ct = CAMPUS_CENTERS[c];
-      wv.current.postMessage(JSON.stringify({ type: "moveTo", lng: ct.lng, lat: ct.lat, zoom: ct.zoom }));
+      const b = bounds[c];
+      wv.current.postMessage(JSON.stringify({ type: "fitBounds", minLat: b.minLat, minLng: b.minLng, maxLat: b.maxLat, maxLng: b.maxLng }));
     }
   };
 
   const handleMsg = (e: any) => {
     try {
       const d = JSON.parse(e.nativeEvent.data);
-      if (d.type === "mapReady") { setMapState("ready"); const ct = initialCenter || CAMPUS_CENTERS[campus]; wv.current?.postMessage(JSON.stringify({ type: "init", lng: ct.lng, lat: ct.lat, zoom: ct.zoom, chests, events })); }
+      if (d.type === "mapReady") { setMapState("ready"); const b = bounds[campus]; wv.current?.postMessage(JSON.stringify({ type: "init", minLat: b.minLat, minLng: b.minLng, maxLat: b.maxLat, maxLng: b.maxLng, chests, events, notes })); }
       if (d.type === "mapError") setMapState("failed");
       if (d.type === "chestClick") { const c = chests.find((x: any) => x._id === d.chestId); if (c) { setDialogData({ type: c.type === "advanced" ? "advancedChest" : "normalChest", data: { ...c, label: d.label } }); setDialogVisible(true); } }
       if (d.type === "eventClick") { const ev = events.find((x: any) => x._id === d.eventId); if (ev) { setDialogData({ type: "event", data: ev }); setDialogVisible(true); } }
+      if (d.type === "noteClick") { const n = notes.find((x: any) => x._id === d.noteId); if (n) { setDialogData({ type: "note", data: n }); setDialogVisible(true); } }
       if (d.type === "userCoords") {
         setGpsLabel(`📍 ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`);
         setUserLocation({ lat: d.lat, lng: d.lng });
@@ -402,7 +431,7 @@ function showUL(lat,lng){
   if(ud){map.removeLayer(ud);}
   var ic=L.divIcon({className:'',html:'<div style="width:22px;height:22px;background:#3498DB;border:4px solid #fff;border-radius:50%;box-shadow:0 0 20px rgba(52,152,219,0.8),0 0 40px rgba(52,152,219,0.3);"></div>',iconSize:[30,30],iconAnchor:[15,15]});
   ud=L.marker([lat,lng],{icon:ic,zIndexOffset:9999}).addTo(map);
-  if(userLocFirst){userLocFirst=false;map.setView([lat,lng],Math.max(map.getZoom(),16));}
+  if(userLocFirst){userLocFirst=false;/* GPS蓝点仅显示位置,不自动移动地图 */}
   window.ReactNativeWebView.postMessage(JSON.stringify({type:'userCoords',lat:lat,lng:lng}));
 }
 // GPS完全由RN端expo-location负责，HTML不再自启定位
@@ -411,12 +440,13 @@ function init(){
     map=L.map('map',{center:[${CAMPUS_CENTERS.gulou.lat},${CAMPUS_CENTERS.gulou.lng}],zoom:${CAMPUS_CENTERS.gulou.zoom},zoomControl:false,attributionControl:false});
     L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18,minZoom:3}).addTo(map);
     cl=L.layerGroup().addTo(map);L.control.zoom({position:'bottomright'}).addTo(map);
+    map.fitBounds([[${bounds.gulou.minLat},${bounds.gulou.minLng}],[${bounds.gulou.maxLat},${bounds.gulou.maxLng}]]);
     document.getElementById('ldr').style.display='none';
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapReady'}));
     // 不在这里调startGPS，GPS完全由RN端的expo-location负责
   }catch(e){document.getElementById('ldr').innerHTML='加载失败';window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapError'}));}
 }
-function updateMarkers(chests,events){
+function updateMarkers(chests,events,notes){
   if(!map)return;cl.clearLayers();
   (chests||[]).forEach(function(c,i){
     var a=c.type==='advanced';
@@ -434,12 +464,21 @@ function updateMarkers(chests,events){
     m.on('click',function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'eventClick',eventId:ev._id}));});
     cl.addLayer(m);
   });
+  (notes||[]).forEach(function(n){
+    var noteHtml='<div style="filter:drop-shadow(0 3px 8px rgba(255,183,77,0.5))"><svg viewBox="0 0 32 40" width="32" height="40"><rect x="3" y="4" width="26" height="32" rx="3" fill="#FFE082" stroke="#F9A825" stroke-width="2"/><line x1="8" y1="12" x2="24" y2="12" stroke="#F9A825" stroke-width="1.5"/><line x1="8" y1="17" x2="22" y2="17" stroke="#F9A825" stroke-width="1.5"/><line x1="8" y1="22" x2="20" y2="22" stroke="#F9A825" stroke-width="1.5"/><rect x="10" y="36" width="12" height="3" rx="1" fill="#F9A825"/></svg></div>';
+    var ic=L.divIcon({className:'',html:noteHtml,iconSize:[32,40],iconAnchor:[16,40]});
+    var m=L.marker([n.coordinates.lat,n.coordinates.lng],{icon:ic});
+    m.on('click',function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'noteClick',noteId:n._id}));});
+    cl.addLayer(m);
+  });
 }
 document.addEventListener('message',function(e){
   try{
     var d=JSON.parse(e.data);
-    if((d.type==='init'||d.type==='moveTo')&&map){map.setView([d.lat,d.lng],d.zoom||16,{animate:true});if(d.chests||d.events)updateMarkers(d.chests,d.events);}
-    if(d.type==='updateMarkers'&&map)updateMarkers(d.chests,d.events);
+    if(d.type==='init'&&map){map.fitBounds([[d.minLat,d.minLng],[d.maxLat,d.maxLng]]);if(d.chests||d.events||d.notes)updateMarkers(d.chests,d.events,d.notes);}
+    if(d.type==='moveTo'&&map){map.setView([d.lat,d.lng],d.zoom||16,{animate:true});if(d.chests||d.events||d.notes)updateMarkers(d.chests,d.events,d.notes);}
+    if(d.type==='fitBounds'&&map){map.fitBounds([[d.minLat,d.minLng],[d.maxLat,d.maxLng]]);}
+    if(d.type==='updateMarkers'&&map)updateMarkers(d.chests,d.events,d.notes);
     if(d.type==='userLoc'&&map)showUL(d.lat,d.lng);
     if(d.type==='centerOnUser'&&ud){var pos=ud.getLatLng();if(pos)map.setView([pos.lat,pos.lng],Math.max(map.getZoom(),16));}
   }catch(err){}
@@ -454,6 +493,7 @@ init();
         <View style={styles.sw}>
           <T activeOpacity={0.7} onPress={() => switchCampus(Campus.GULOU)} style={[styles.sb, campus === Campus.GULOU && styles.sa]}><Text style={[styles.st, campus === Campus.GULOU && styles.sta]}>🏫 鼓楼</Text></T>
           <T activeOpacity={0.7} onPress={() => switchCampus(Campus.XIANLIN)} style={[styles.sb, campus === Campus.XIANLIN && styles.sa]}><Text style={[styles.st, campus === Campus.XIANLIN && styles.sta]}>🏢 仙林</Text></T>
+          <T activeOpacity={0.7} onPress={() => switchCampus(Campus.SUZHOU)} style={[styles.sb, campus === Campus.SUZHOU && styles.sa]}><Text style={[styles.st, campus === Campus.SUZHOU && styles.sta]}>🏛️ 苏州</Text></T>
         </View>
       </View>
       {gpsLabel ? (
@@ -473,6 +513,9 @@ init();
           <View style={styles.ctr}><Text style={styles.ci}>📦</Text><Text style={styles.cn}>{nc.length}</Text></View>
           <View style={[styles.ctr, styles.ca]}><Text style={styles.ci}>💎</Text><Text style={styles.cn}>{ac.length}</Text></View>
         </View>
+        <T style={styles.noteBtn} onPress={() => { if (userLocation) { (navigation as any).navigate("WriteNote", { userLocation, campus }); } }} activeOpacity={0.7}>
+          <Text style={{ fontSize: 20 }}>📝</Text>
+        </T>
         <T style={styles.locBtn} onPress={() => { wv.current?.postMessage(JSON.stringify({ type: "centerOnUser" })); }} activeOpacity={0.7}>
           <Text style={{ fontSize: 20 }}>📍</Text>
         </T>
@@ -484,6 +527,9 @@ init();
             {dialogData?.type === "normalChest" && renderNormalChestDialog(dialogData.data)}
             {dialogData?.type === "advancedChest" && renderAdvancedChestDialog(dialogData.data)}
             {dialogData?.type === "event" && renderEventDialog(dialogData.data)}
+            {dialogData?.type === "note" && (() => { const n = dialogData.data; const dist = userLocation ? (() => { const R=6371000; const dLat=(n.coordinates.lat-userLocation.lat)*Math.PI/180; const dLng=(n.coordinates.lng-userLocation.lng)*Math.PI/180; const x=Math.sin(dLat/2)**2+Math.cos(userLocation.lat*Math.PI/180)*Math.cos(n.coordinates.lat*Math.PI/180)*Math.sin(dLng/2)**2; return Math.round(R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))); })():null; const inR = dist!=null&&dist<=20;
+              return <View style={{width:"100%",alignItems:"center"}}><Text style={dlStyles.emoji}>📝</Text><Text style={dlStyles.title}>一张纸条</Text>{dist!=null&&<Text style={{textAlign:"center",marginTop:8,fontWeight:"700",color:colors.textHint}}>📍 距离你 {dist}m</Text>}<Text style={dlStyles.hint}>踏进二十步之内，便能拾起这片心情</Text>{inR?<T style={{backgroundColor:"#F56C6C",borderRadius:20,paddingVertical:16,width:"100%",alignItems:"center",marginTop:4}} onPress={async()=>{const s=socketRef.current||await getSocket();if(!s?.connected||!userLocation)return;setDialogVisible(false);s.emit("location_update",{lat:userLocation.lat,lng:userLocation.lng,campus});setTimeout(()=>s.emit("pickup_note",{noteId:n._id}),300);}}><Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:17}}>📋 捡起这张纸条</Text></T>:<T style={dlStyles.cancelBtn} onPress={closeDialog}><Text style={dlStyles.cancelBtnText}>知道了</Text></T>}</View>;
+            })()}
           </T>
         </T>
       </Modal>
@@ -520,6 +566,32 @@ init();
           </T>
         </T>
       </Modal>
+      {/* 纸条拾取结果 */}
+      <Modal visible={showNoteResult} transparent animationType="fade" onRequestClose={() => setShowNoteResult(false)}>
+        <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.6)",justifyContent:"center",alignItems:"center",padding:24}}>
+          <View style={dlStyles.card}>
+            {noteResult && <View style={{alignItems:"center",width:"100%"}}>
+              <Text style={{fontSize:56,marginBottom:12}}>📜</Text>
+              <View style={{backgroundColor:"#FFF9E6",borderRadius:16,borderWidth:1,borderColor:"#E6D5A8",width:"100%",height:200}}>
+                <ScrollView style={{flex:1}} nestedScrollEnabled contentContainerStyle={{padding:18}}>
+                  <Text style={{fontSize:16,lineHeight:26,color:"#4A3728"}}>{noteResult.content}</Text>
+                </ScrollView>
+              </View>
+              {!noteResult.isAnonymous && <View style={{flexDirection:"row",alignItems:"center",marginTop:14,gap:8}}>
+                <View style={{width:32,height:32,borderRadius:16,backgroundColor:"#E8D5B7",alignItems:"center",justifyContent:"center"}}><Text style={{fontSize:16}}>👤</Text></View>
+                <View><Text style={{fontWeight:"700",fontSize:14,color:"#4A3728"}}>{noteResult.authorNickname}</Text>{noteResult.authorNumericId > 0 ? <Text style={{fontSize:11,color:"#9B8C7C"}}>ID {noteResult.authorNumericId}</Text> : null}</View>
+              </View>}
+              <View style={{flexDirection:"row",marginTop:14,gap:24}}>
+                <Text style={{fontSize:11,color:"#9B8C7C"}}>🕐 {new Date(noteResult.createdAt).toLocaleString("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})} 留下</Text>
+                <Text style={{fontSize:11,color:"#9B8C7C"}}>📋 {new Date(noteResult.pickedAt).toLocaleString("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})} 拾取</Text>
+              </View>
+              <T style={{backgroundColor:"#C8956C",borderRadius:20,paddingVertical:16,width:"100%",alignItems:"center",marginTop:18}} onPress={() => setShowNoteResult(false)}>
+                <Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:16}}>📋 收起纸条</Text>
+              </T>
+            </View>}
+          </View>
+        </View>
+      </Modal>
       {/* 开箱加载中 */}
       {unlockingChestId && (
         <View style={resultStyles.loadingOverlay}>
@@ -553,6 +625,7 @@ const styles = StyleSheet.create({
   cs: { position: "absolute", top: 12, right: 12, gap: 8, alignItems: "flex-end" },
   sqBtn: { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.9)", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, elevation: 4 },
   locBtn: { position: "absolute", bottom: 120, right: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 24, width: 48, height: 48, elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, zIndex: 30 },
+  noteBtn: { position: "absolute", bottom: 180, right: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,224,130,0.95)", borderRadius: 24, width: 48, height: 48, elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, zIndex: 30 },
   ctr: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.9)", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, elevation: 4 },
   ca: { borderWidth: 1.5, borderColor: colors.rarity.典藏 + "50" },
   ci: { fontSize: 22 }, cn: { fontWeight: "800", fontSize: 18, color: "#333" },

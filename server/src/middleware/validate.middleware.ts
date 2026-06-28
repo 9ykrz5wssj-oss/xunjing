@@ -55,7 +55,7 @@ export const schemas = {
     startTime: z.string().min(1, "请选择开始时间"),
     endTime: z.string().min(1, "请选择结束时间"),
     capacity: z.number().int().positive("容纳人数必须为正整数"),
-    campus: z.enum(["gulou", "xianlin"], { message: "请选择校区" }),
+    campus: z.enum(["gulou", "xianlin", "suzhou"], { message: "请选择校区" }),
     locationText: z.string().min(1, "请填写具体地点"),
     meetCoordinates: z.object({
       lat: z.number(),

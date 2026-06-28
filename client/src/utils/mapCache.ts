@@ -105,3 +105,19 @@ export async function setCachedEvents(
 ): Promise<void> {
   return setItem(eventsKey(campus), data);
 }
+
+// 校区边界缓存（TTL: 30分钟，边界很少变动）
+const BOUNDS_KEY = "map_cache:bounds";
+const BOUNDS_MAX_AGE = 30 * 60 * 1000;
+
+export interface CampusBoundData {
+  minLat: number; maxLat: number; minLng: number; maxLng: number;
+}
+
+export async function getCachedBounds(): Promise<Record<string, CampusBoundData> | null> {
+  return getItem<Record<string, CampusBoundData>>(BOUNDS_KEY, BOUNDS_MAX_AGE);
+}
+
+export async function setCachedBounds(data: Record<string, CampusBoundData>): Promise<void> {
+  return setItem(BOUNDS_KEY, data);
+}

@@ -6,6 +6,7 @@ interface CampusBounds { minLng: number; maxLng: number; minLat: number; maxLat:
 const DEFAULT_BOUNDS: Record<Campus, CampusBounds> = {
   [Campus.GULOU]: { minLng: 118.7720, maxLng: 118.7805, minLat: 32.0550, maxLat: 32.0615 },
   [Campus.XIANLIN]: { minLng: 118.9450, maxLng: 118.9570, minLat: 32.1100, maxLat: 32.1220 },
+  [Campus.SUZHOU]: { minLng: 120.5150, maxLng: 120.5310, minLat: 31.3160, maxLat: 31.3300 },
 };
 
 // 缓存（避免每次请求都查DB）
@@ -21,6 +22,7 @@ async function getBounds(): Promise<Record<string, CampusBounds>> {
     cachedBounds = {
       gulou: db.gulou || DEFAULT_BOUNDS.gulou,
       xianlin: db.xianlin || DEFAULT_BOUNDS.xianlin,
+      suzhou: db.suzhou || DEFAULT_BOUNDS.suzhou,
     };
   } catch {
     cachedBounds = { ...DEFAULT_BOUNDS };

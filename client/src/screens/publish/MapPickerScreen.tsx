@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
-import { Campus } from "../../utils/constants";
+import { Campus, CAMPUS_BOUNDS } from "../../utils/constants";
+import { getCachedBounds, setCachedBounds, CampusBoundData } from "../../utils/mapCache";
+import api from "../../services/api";
 
 const CAMPUS_CENTERS: Record<Campus, { lng: number; lat: number; zoom: number }> = {
   gulou: { lng: 118.7750, lat: 32.0575, zoom: 16 },
   xianlin: { lng: 118.9500, lat: 32.1170, zoom: 15 },
+  suzhou: { lng: 120.5230, lat: 31.3230, zoom: 15 },
 };
 
 let L: any = null;
@@ -14,7 +17,22 @@ export function MapPickerScreen({ route, navigation }: any) {
   const { campus: initialCampus, onSelect } = route.params || {};
   const [campus] = useState<Campus>(initialCampus || Campus.GULOU);
   const [selectedCoord, setSelectedCoord] = useState<{ lat: number; lng: number } | null>(null);
+  const [bounds, setBounds] = useState<Record<string, CampusBoundData>>(CAMPUS_BOUNDS);
   const mapRef = useRef<any>(null); const markerRef = useRef<any>(null); const divRef = useRef<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      try { const cached = await getCachedBounds(); if (cached) { setBounds(cached); return; } } catch {}
+      try {
+        const res = await api.get("/map/campus-bounds");
+        if ((res as any).success && (res as any).data) {
+          const map: Record<string, CampusBoundData> = { ...CAMPUS_BOUNDS };
+          ((res as any).data).forEach((c: any) => { map[c.campus] = { minLat: c.minLat, maxLat: c.maxLat, minLng: c.minLng, maxLng: c.maxLng }; });
+          setBounds(map); setCachedBounds(map).catch(() => {});
+        }
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     if (!divRef.current || mapRef.current) return; let cancelled = false;
@@ -33,7 +51,7 @@ export function MapPickerScreen({ route, navigation }: any) {
       map.on("click", (e: any) => { const { lat, lng } = e.latlng; setSelectedCoord({ lat, lng }); if (markerRef.current) map.removeLayer(markerRef.current);
         const ic = L.divIcon({ className: "", html: '<div style="width:28px;height:36px;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.3))"><svg viewBox="0 0 28 36" width="28" height="36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="#FF6B6B" stroke="#fff" stroke-width="2"/><circle cx="14" cy="13" r="5" fill="#fff"/></svg></div>', iconSize: [28,36], iconAnchor: [14,36] });
         markerRef.current = L.marker([lat, lng], { icon: ic }).addTo(map); });
-      mapRef.current = map; setTimeout(() => map.invalidateSize(), 200);
+      mapRef.current = map; setTimeout(() => { map.invalidateSize(); const b = bounds[campus]; map.fitBounds([[b.minLat, b.minLng], [b.maxLat, b.maxLng]]); }, 200);
     });
     return () => { cancelled = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }, []);

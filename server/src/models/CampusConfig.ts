@@ -2,7 +2,7 @@ import mongoose, { Schema } from "mongoose";
 
 // 校区边界配置（管理员可修改）
 const CampusConfigSchema = new Schema({
-  campus: { type: String, enum: ["gulou", "xianlin"], required: true, unique: true },
+  campus: { type: String, enum: ["gulou", "xianlin", "suzhou"], required: true, unique: true },
   minLng: { type: Number, required: true },
   maxLng: { type: Number, required: true },
   minLat: { type: Number, required: true },

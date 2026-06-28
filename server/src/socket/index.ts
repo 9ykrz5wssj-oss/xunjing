@@ -7,6 +7,7 @@ import { ClientToServerEvents, ServerToClientEvents } from "../types/socket";
 import { handleLocationUpdate } from "./location.handler";
 import { handleChestOpenRequest } from "./chest.handler";
 import { handlePrivateMessage, handleGroupMessage, handleTyping, handleMarkRead } from "./chat.handler";
+import { handlePickupNote } from "./note.handler";
 
 let io: Server;
 
@@ -68,6 +69,15 @@ export function initializeSocket(httpServer: HttpServer): Server {
     socket.on("typing_start", (data) => handleTyping(socket, user, data, true));
     socket.on("typing_end", (data) => handleTyping(socket, user, data, false));
     socket.on("mark_read", (data) => handleMarkRead(socket, user, data));
+    socket.on("join_event_chat", (data) => {
+      socket.join(`event:${data.eventId}`);
+      logger.debug(`[Socket] ${user.numericId} joined event chat: ${data.eventId}`);
+    });
+    socket.on("leave_event_chat", (data) => {
+      socket.leave(`event:${data.eventId}`);
+      logger.debug(`[Socket] ${user.numericId} left event chat: ${data.eventId}`);
+    });
+    socket.on("pickup_note", (data) => handlePickupNote(socket, user, data));
 
     // ── 断开连接 ──
     socket.on("disconnect", async () => {
@@ -80,6 +90,11 @@ export function initializeSocket(httpServer: HttpServer): Server {
       // 从所有宝箱附近集合中移除
       const chestKeys = await redis.keys("chest_nearby:*");
       for (const key of chestKeys) {
+        await redis.srem(key, user.userId.toString());
+      }
+      // 从所有纸条附近集合中移除
+      const noteKeys = await redis.keys("note_nearby:*");
+      for (const key of noteKeys) {
         await redis.srem(key, user.userId.toString());
       }
     });

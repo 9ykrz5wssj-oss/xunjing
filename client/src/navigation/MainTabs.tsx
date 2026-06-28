@@ -18,6 +18,7 @@ import { ChatScreen } from "../screens/friends/ChatScreen";
 import { UserGalleryScreen } from "../screens/gallery/UserGalleryScreen";
 import { PublishEventScreen } from "../screens/publish/PublishEventScreen";
 import { MapPickerScreen } from "../screens/publish/MapPickerScreen";
+import { WriteNoteScreen } from "../screens/note/WriteNoteScreen";
 import { FeedbackScreen } from "../screens/profile/FeedbackScreen";
 import { GroupChatScreen } from "../screens/log/GroupChatScreen";
 import { ActivitySquareScreen } from "../screens/log/ActivitySquareScreen";
@@ -83,6 +84,7 @@ function MapStack() {
   return (
     <MapStackNav.Navigator screenOptions={{ headerShown: false }}>
       <MapStackNav.Screen name="MapMain" component={MapScreen} />
+      <MapStackNav.Screen name="WriteNote" component={WriteNoteScreen} />
       <MapStackNav.Screen name="EventDetail" component={EventDetailScreen} />
       <MapStackNav.Screen name="GroupChat" component={GroupChatScreen} />
       <MapStackNav.Screen name="UserGallery" component={UserGalleryScreen} />

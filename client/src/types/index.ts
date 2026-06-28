@@ -52,11 +52,26 @@ export interface ItemDetail {
 // ── 宝箱 ──
 export interface ChestData {
   _id: string;
-  campus: "gulou" | "xianlin";
+  campus: "gulou" | "xianlin" | "suzhou";
   type: "normal" | "advanced";
   coordinates: { lat: number; lng: number };
   requiredPlayers: number;
   expiresAt: string;
+}
+
+// ── 纸条 ──
+export interface NoteData {
+  _id: string;
+  campus: string;
+  coordinates: { lat: number; lng: number };
+  authorNickname: string;
+  authorAvatar?: string;
+  authorNumericId?: number;
+  content: string;
+  isAnonymous: boolean;
+  createdAt: string;
+  expiresAt: string;
+  pickedAt?: string;
 }
 
 export interface ChestOpenResult {
@@ -83,7 +98,7 @@ export interface EventData {
   startTime: string;
   endTime: string;
   capacity: number;
-  campus: "gulou" | "xianlin";
+  campus: "gulou" | "xianlin" | "suzhou";
   locationText: string;
   meetCoordinates: { lat: number; lng: number };
   description: string;

@@ -13,7 +13,7 @@ interface MessageBubbleProps {
   isRevoked?: boolean;
 }
 
-export function MessageBubble({ content, isMine, senderNickname, senderAvatar, timestamp, showAvatar, isRevoked }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ content, isMine, senderNickname, senderAvatar, timestamp, showAvatar, isRevoked }: MessageBubbleProps) {
   const timeStr = (() => {
     const d = new Date(timestamp);
     const now = new Date();
@@ -62,7 +62,7 @@ export function MessageBubble({ content, isMine, senderNickname, senderAvatar, t
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

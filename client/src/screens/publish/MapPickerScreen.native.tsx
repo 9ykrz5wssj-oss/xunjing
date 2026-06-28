@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions, Platform } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
-import { Campus } from "../../utils/constants";
+import { Campus, CAMPUS_BOUNDS } from "../../utils/constants";
+import { getCachedBounds, setCachedBounds, CampusBoundData } from "../../utils/mapCache";
+import api from "../../services/api";
 
 let WebViewNative: any = null;
 if (Platform.OS !== "web") { try { WebViewNative = require("react-native-webview").WebView; } catch {} }
@@ -9,6 +11,7 @@ if (Platform.OS !== "web") { try { WebViewNative = require("react-native-webview
 const CAMPUS_CENTERS: Record<Campus, { lng: number; lat: number; zoom: number }> = {
   gulou: { lng: 118.7750, lat: 32.0575, zoom: 16 },
   xianlin: { lng: 118.9500, lat: 32.1170, zoom: 15 },
+  suzhou: { lng: 120.5230, lat: 31.3230, zoom: 15 },
 };
 
 // ===== Web Map =====
@@ -37,9 +40,9 @@ function WebMapPicker({ campus, onCoord }: { campus: Campus; onCoord: (c: {lat:n
 }
 
 // ===== Native Map (WebView) =====
-function NativeMapPicker({ campus, onCoord, onReady }: { campus: Campus; onCoord: (c: {lat:number;lng:number}) => void; onReady: (wv:any) => void }) {
+function NativeMapPicker({ campus, onCoord, onReady, bounds }: { campus: Campus; onCoord: (c: {lat:number;lng:number}) => void; onReady: (wv:any) => void; bounds: Record<string, CampusBoundData> }) {
   const webViewRef = useRef<any>(null);
-  const ct = CAMPUS_CENTERS[campus];
+  const ct = CAMPUS_CENTERS[campus]; const cb = bounds[campus];
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -47,6 +50,7 @@ function NativeMapPicker({ campus, onCoord, onReady }: { campus: Campus; onCoord
 <script>
 var map=L.map('map',{center:[${ct.lat},${ct.lng}],zoom:${ct.zoom},zoomControl:false,attributionControl:false});
 L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18,minZoom:3}).addTo(map);
+map.fitBounds([[${cb.minLat},${cb.minLng}],[${cb.maxLat},${cb.maxLng}]]);
 var pinIcon=L.divIcon({className:'',html:'<div style="width:28px;height:36px;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.3))"><svg viewBox="0 0 28 36" width="28" height="36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="#FF6B6B" stroke="#fff" stroke-width="2"/><circle cx="14" cy="13" r="5" fill="#fff"/></svg></div>',iconSize:[28,36],iconAnchor:[14,36]});
 var currentPin=null;
 map.on('click',function(e){if(currentPin)map.removeLayer(currentPin);currentPin=L.marker([e.latlng.lat,e.latlng.lng],{icon:pinIcon}).addTo(map);window.ReactNativeWebView.postMessage(JSON.stringify({type:'pinPlaced',lat:e.latlng.lat,lng:e.latlng.lng}));});
@@ -69,7 +73,22 @@ export function MapPickerScreen({ route, navigation }: any) {
   const [campus] = useState<Campus>(initialCampus || Campus.GULOU);
   const [selectedCoord, setSelectedCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [bounds, setBounds] = useState<Record<string, CampusBoundData>>(CAMPUS_BOUNDS);
   const wvRef = useRef<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      try { const cached = await getCachedBounds(); if (cached) { setBounds(cached); return; } } catch {}
+      try {
+        const res = await api.get("/map/campus-bounds");
+        if ((res as any).success && (res as any).data) {
+          const map: Record<string, CampusBoundData> = { ...CAMPUS_BOUNDS };
+          ((res as any).data).forEach((c: any) => { map[c.campus] = { minLat: c.minLat, maxLat: c.maxLat, minLng: c.minLng, maxLng: c.maxLng }; });
+          setBounds(map); setCachedBounds(map).catch(() => {});
+        }
+      } catch {}
+    })();
+  }, []);
 
   const confirmLocation = () => {
     if (selectedCoord && onSelect) { onSelect(selectedCoord); navigation.goBack(); }
@@ -88,7 +107,7 @@ export function MapPickerScreen({ route, navigation }: any) {
         {Platform.OS === "web" ? (
           <WebMapPicker campus={campus} onCoord={setSelectedCoord} />
         ) : WebViewNative ? (
-          <NativeMapPicker campus={campus} onCoord={setSelectedCoord} onReady={(wv) => { wvRef.current = wv; setMapReady(true); }} />
+          <NativeMapPicker campus={campus} bounds={bounds} onCoord={setSelectedCoord} onReady={(wv) => { wvRef.current = wv; setMapReady(true); }} />
         ) : (
           <View style={{flex:1,justifyContent:"center",alignItems:"center"}}><Text style={{color:colors.textHint}}>地图不可用</Text></View>
         )}

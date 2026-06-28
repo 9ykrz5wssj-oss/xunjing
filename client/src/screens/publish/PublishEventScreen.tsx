@@ -141,6 +141,10 @@ export function PublishEventScreen({ navigation }: any) {
             <Text style={styles.campusEmoji}>🏢</Text>
             <Text style={[styles.campusBtnText, campus === Campus.XIANLIN && styles.campusBtnTextActive]}>仙林校区</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={[styles.campusBtn, campus === Campus.SUZHOU && styles.campusBtnActive]} onPress={() => setCampus(Campus.SUZHOU)}>
+            <Text style={styles.campusEmoji}>🏛️</Text>
+            <Text style={[styles.campusBtnText, campus === Campus.SUZHOU && styles.campusBtnTextActive]}>苏州校区</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Step 2: 时间 & 人数 */}

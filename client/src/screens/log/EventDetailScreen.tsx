@@ -131,7 +131,7 @@ export function EventDetailScreen({ route, navigation }: any) {
           <Text style={styles.infoTitle}>{event.title || "默认主题"}</Text>
           <InfoRow label="⏰ 时间" value={`${new Date(event.startTime).toLocaleString("zh-CN")} → ${new Date(event.endTime).toLocaleString("zh-CN")}`} />
           <InfoRow label="👥 人数" value={`${event.currentParticipants || 1} / ${event.capacity}`} />
-          <InfoRow label="📍 校区" value={event.campus === "gulou" ? "鼓楼校区" : "仙林校区"} />
+          <InfoRow label="📍 校区" value={event.campus === "gulou" ? "鼓楼校区" : event.campus === "xianlin" ? "仙林校区" : event.campus === "suzhou" ? "苏州校区" : event.campus} />
           <InfoRow label="📌 地点" value={event.locationText} />
           {event.description ? <InfoRow label="📝 说明" value={event.description} /> : null}
         </View>

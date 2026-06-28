@@ -45,6 +45,7 @@ export async function refreshChests(): Promise<void> {
   await despawnExpiredChests();
   await spawnChestsForCampus(Campus.GULOU);
   await spawnChestsForCampus(Campus.XIANLIN);
+  await spawnChestsForCampus(Campus.SUZHOU);
 }
 
 // 5分钟定时补充：如果宝箱不足则补充
@@ -52,6 +53,7 @@ export async function topUpChests(): Promise<void> {
   await despawnExpiredChests();
   await spawnChestsForCampus(Campus.GULOU);
   await spawnChestsForCampus(Campus.XIANLIN);
+  await spawnChestsForCampus(Campus.SUZHOU);
 }
 
 export async function initializeChests(): Promise<void> {

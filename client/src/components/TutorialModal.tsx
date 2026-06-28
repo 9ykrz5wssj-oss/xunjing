@@ -46,6 +46,11 @@ const STEPS: Step[] = [
     title: "个人展柜",
     desc: "你获得的所有数字藏品都会收藏在展柜中。从典藏到常见，六个稀有度等你来收集。快来填满你的展柜吧！",
   },
+  {
+    emoji: "📜",
+    title: "留下纸条",
+    desc: "在每个角落，你都可以留下一张纸条。\n把此刻的心情折进去，留在风里。\n\n路过的人若踏进二十步之内，便能拾起这段心事。悄悄写下，静静等待，或许某天，会有人读到你的温度。\n\n拾到的纸条将永远收藏在你的展柜中，成为你独家记忆的一部分。",
+  },
 ];
 
 export function TutorialModal({ visible, onDone }: { visible: boolean; onDone: () => void }) {

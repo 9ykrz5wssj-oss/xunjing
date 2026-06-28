@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity, SectionList,
-  RefreshControl, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, SectionList, FlatList,
+  RefreshControl, ActivityIndicator, Modal, ScrollView, Pressable,
 } from "react-native";
 import { colors, typography, spacing, borderRadius } from "../../theme";
 import { CollectionCard } from "../../components/CollectionCard";
 import { EmptyState } from "../../components/EmptyState";
 import { RARITY_COLORS } from "../../utils/constants";
 import { getMyCollections } from "../../services/collection.api";
-import { CollectionItem } from "../../types";
+import { getMyNotes } from "../../services/note.api";
+import { CollectionItem, NoteData } from "../../types";
 
 const RARITY_ORDER = ["典藏", "神秘", "限定", "高端", "普通", "常见"];
 
@@ -26,6 +27,10 @@ export function GalleryScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
+  const [showNotes, setShowNotes] = useState(false);
+  const [myNotes, setMyNotes] = useState<NoteData[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<NoteData | null>(null);
   const listRef = useRef<SectionList>(null);
 
   const fetchCollections = useCallback(async () => {
@@ -90,10 +95,21 @@ export function GalleryScreen({ navigation }: any) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🏛️ 我的展柜</Text>
         <Text style={styles.headerSub}>共 {totalCount} 件藏品</Text>
+        <TouchableOpacity style={styles.noteToggle} onPress={async () => {
+          const next = !showNotes;
+          setShowNotes(next);
+          if (next && myNotes.length === 0) {
+            setNotesLoading(true);
+            try { const r = await getMyNotes(); if (r.success && r.data) setMyNotes(r.data); } catch {}
+            setNotesLoading(false);
+          }
+        }} activeOpacity={0.7}>
+          <Text style={styles.noteToggleText}>{showNotes ? "💎 藏品" : "📝 纸条"}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* ── 左侧浮动标签栏 ── */}
-      <View style={styles.floatTabBar}>
+      {/* ── 左侧浮动标签栏（纸条模式下隐藏） ── */}
+      {!showNotes && <View style={styles.floatTabBar}>
         {RARITY_ORDER.map((rarity) => {
           const has = grouped[rarity]?.length > 0;
           const active = selectedRarity === rarity;
@@ -113,8 +129,37 @@ export function GalleryScreen({ navigation }: any) {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </View>}
 
+      {showNotes ? (
+        <View style={{ flex: 1 }}>
+          {notesLoading ? <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 60 }} /> :
+           myNotes.length === 0 ? <View style={{ alignItems: "center", paddingTop: 80 }}><Text style={{ fontSize: 48, marginBottom: 12 }}>📝</Text><Text style={{ ...typography.body, color: colors.textHint }}>还未曾拾起过谁的心事</Text><Text style={{ ...typography.caption, color: colors.textHint, marginTop: 4 }}>去地图上发现并拾取吧！</Text></View> :
+           <FlatList data={myNotes} keyExtractor={(n: any) => n._id} contentContainerStyle={{ padding: spacing.md }}
+             renderItem={({ item: n }: any) => (
+               <TouchableOpacity activeOpacity={0.7} onPress={() => setSelectedNote(n)} style={{ backgroundColor: "#FFFBF2", borderRadius: 16, padding: 18, marginBottom: 12, marginHorizontal: 4, borderWidth: 1, borderColor: "#E6D5A8", shadowColor: "#C8956C", shadowOffset: {width:0,height:2}, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 }}>
+                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                   {n.isAnonymous ? (
+                     <View style={{flexDirection:"row",alignItems:"center",gap:6}}><Text style={{fontSize:18}}>🕶️</Text><Text style={{fontWeight:"600",fontSize:13,color:"#9B8C7C"}}>匿名</Text></View>
+                   ) : (
+                     <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
+                       <View style={{width:28,height:28,borderRadius:14,backgroundColor:"#E8D5B7",alignItems:"center",justifyContent:"center"}}><Text style={{fontSize:14}}>👤</Text></View>
+                       <View>
+                         <Text style={{fontWeight:"700",fontSize:13,color:"#4A3728"}}>{n.authorNickname}</Text>
+                         {(n.authorNumericId && n.authorNumericId > 0) ? <Text style={{fontSize:10,color:"#9B8C7C"}}>ID {n.authorNumericId}</Text> : null}
+                       </View>
+                     </View>
+                   )}
+                   <Text style={{fontSize:10,color:"#B8A898"}}>{new Date(n.pickedAt).toLocaleDateString("zh-CN",{month:"short",day:"numeric"})}</Text>
+                 </View>
+                 <Text style={{fontSize:15,lineHeight:22,color:"#4A3728",fontStyle:"italic"}} numberOfLines={3}>{n.content}</Text>
+                 <Text style={{fontSize:10,color:"#B8A898",marginTop:8}}>📋 {new Date(n.pickedAt).toLocaleString("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})} 拾取</Text>
+               </TouchableOpacity>
+             )}
+           />
+          }
+        </View>
+      ) : <>
       {/* ── 虚拟化列表（只渲染可见区域的卡片） ── */}
       <SectionList
         ref={listRef as any}
@@ -150,18 +195,42 @@ export function GalleryScreen({ navigation }: any) {
                 onPress={() => navigation.navigate("ItemDetail", { item })}
               />
             ))}
-            {/* 行尾补齐占位，保证卡片左对齐 */}
             {row.length < 3 && (
               <View style={{ width: row.length === 2 ? "31%" : "62%", marginBottom: 0 }} />
             )}
           </View>
         )}
-        // 初始渲染足够的行以填满首屏（避免空白）
         initialNumToRender={12}
         maxToRenderPerBatch={9}
         windowSize={5}
         removeClippedSubviews={true}
       />
+      </>}
+      <Modal visible={!!selectedNote} transparent animationType="fade" onRequestClose={() => setSelectedNote(null)}>
+        <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.6)",justifyContent:"center",alignItems:"center",padding:24}}>
+          <View style={{backgroundColor:"#FFFBF2",borderRadius:20,padding:24,width:"100%",maxWidth:400}}>
+            {selectedNote && (<View style={{width:"100%",alignItems:"center"}}>
+              <Text style={{fontSize:56,marginBottom:12}}>📜</Text>
+              <View style={{backgroundColor:"#FFF9E6",borderRadius:16,borderWidth:1,borderColor:"#E6D5A8",width:"100%",height:200}}>
+                <ScrollView style={{flex:1}} nestedScrollEnabled contentContainerStyle={{padding:18}}>
+                  <Text style={{fontSize:16,lineHeight:26,color:"#4A3728"}}>{selectedNote.content}</Text>
+                </ScrollView>
+              </View>
+              {!selectedNote.isAnonymous && <View style={{flexDirection:"row",alignItems:"center",marginTop:14,gap:8}}>
+                <View style={{width:32,height:32,borderRadius:16,backgroundColor:"#E8D5B7",alignItems:"center",justifyContent:"center"}}><Text style={{fontSize:16}}>👤</Text></View>
+                <View><Text style={{fontWeight:"700",fontSize:14,color:"#4A3728"}}>{selectedNote.authorNickname}</Text>{(selectedNote.authorNumericId && selectedNote.authorNumericId > 0) ? <Text style={{fontSize:11,color:"#9B8C7C"}}>ID {selectedNote.authorNumericId}</Text> : null}</View>
+              </View>}
+              <View style={{flexDirection:"row",marginTop:14,gap:24}}>
+                <Text style={{fontSize:11,color:"#9B8C7C"}}>🕐 {new Date(selectedNote.createdAt).toLocaleString("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})} 留下</Text>
+                <Text style={{fontSize:11,color:"#9B8C7C"}}>📋 {selectedNote.pickedAt ? new Date(selectedNote.pickedAt).toLocaleString("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : ""} 拾取</Text>
+              </View>
+              <TouchableOpacity style={{backgroundColor:"#C8956C",borderRadius:20,paddingVertical:16,width:"100%",alignItems:"center",marginTop:18}} onPress={() => setSelectedNote(null)}>
+                <Text style={{color:"#FFFFFF",fontWeight:"800",fontSize:16}}>📋 收起纸条</Text>
+              </TouchableOpacity>
+            </View>)}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -186,6 +255,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { ...typography.h2, color: colors.textPrimary },
   headerSub: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
+  noteToggle: { marginTop: spacing.sm, backgroundColor: "#FFF8E1", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: borderRadius.md, alignSelf: "flex-start", borderWidth: 1, borderColor: "#FFE082" },
+  noteToggleText: { ...typography.caption, color: "#E65100", fontWeight: "700" },
   floatTabBar: {
     position: "absolute",
     left: 4,

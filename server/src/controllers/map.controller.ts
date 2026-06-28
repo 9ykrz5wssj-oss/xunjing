@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest } from "../types";
 import { Event } from "../models/Event";
+import { CampusConfig } from "../models/CampusConfig";
 import { ActivityStatus } from "../config/constants";
 
 export async function getActivityPins(req: AuthRequest, res: Response): Promise<void> {
@@ -30,6 +31,16 @@ export async function getActivityPins(req: AuthRequest, res: Response): Promise<
       .limit(50);
 
     res.json({ success: true, data: events });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// 获取所有校区边界（公开接口，供地图fitBounds使用）
+export async function getCampusBounds(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const configs = await CampusConfig.find().select("campus minLng maxLng minLat maxLat");
+    res.json({ success: true, data: configs });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

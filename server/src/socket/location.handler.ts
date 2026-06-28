@@ -2,6 +2,7 @@ import { Socket } from "socket.io";
 import { getRedis } from "../config/redis";
 import { validateGeofence, isWithinChestRadius } from "../services/geo.service";
 import { Chest } from "../models/Chest";
+import { Note, NoteStatus } from "../models/Note";
 import { ChestStatus, CHEST_CONFIG } from "../config/constants";
 import { LocationUpdatePayload } from "../types/socket";
 import { logger } from "../utils/logger";
@@ -63,6 +64,26 @@ export async function handleLocationUpdate(
         currentCount: count,
         requiredCount: chest.requiredPlayers,
       });
+    }
+  }
+
+  // 4. 检查与所有活跃纸条的距离
+  const activeNotes = await Note.find({
+    campus: targetCampus,
+    status: NoteStatus.ACTIVE,
+  });
+
+  for (const note of activeNotes) {
+    const distance = await isWithinChestRadius(
+      lat, lng,
+      note.coordinates.lat, note.coordinates.lng,
+      CHEST_CONFIG.CHEST_PROXIMITY_RADIUS_M
+    );
+    const noteKey = `note_nearby:${note._id.toString()}`;
+    if (distance) {
+      await redis.sadd(noteKey, user.userId.toString());
+    } else {
+      await redis.srem(noteKey, user.userId.toString());
     }
   }
 }

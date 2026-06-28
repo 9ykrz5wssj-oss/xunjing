@@ -8,6 +8,9 @@ export interface ClientToServerEvents {
   typing_start: (data: { conversationId: string; conversationType: string }) => void;
   typing_end: (data: { conversationId: string; conversationType: string }) => void;
   mark_read: (data: { conversationId: string; conversationType: string }) => void;
+  join_event_chat: (data: { eventId: string }) => void;
+  leave_event_chat: (data: { eventId: string }) => void;
+  pickup_note: (data: { noteId: string }) => void;
 }
 
 // ── 服务端发出的事件 ──
@@ -32,6 +35,9 @@ export interface ServerToClientEvents {
   friend_request_accepted: (data: { friendId: string; friendInfo: UserBriefPayload }) => void;
   friend_request_rejected: (data: { targetUserId: string }) => void;
   unread_notification: (data: { count: number; latestType: string }) => void;
+  pickup_note_result: (data: { noteId: string; success: boolean; error?: string; data?: any }) => void;
+  note_removed: (data: { noteId: string }) => void;
+  note_picked: (data: { noteId: string; pickedBy: number }) => void;
 }
 
 // ── Payload 类型 ──

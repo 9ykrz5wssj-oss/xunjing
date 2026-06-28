@@ -50,17 +50,20 @@ export const ADVANCED_CHEST_DROP_WEIGHTS: Record<Rarity, number> = {
 export enum Campus {
   GULOU = "gulou",
   XIANLIN = "xianlin",
+  SUZHOU = "suzhou",
 }
 
 export const CAMPUS_NAMES: Record<Campus, string> = {
   [Campus.GULOU]: "鼓楼校区",
   [Campus.XIANLIN]: "仙林校区",
+  [Campus.SUZHOU]: "苏州校区",
 };
 
 // ── 校区中心坐标与边界 ──
 export const CAMPUS_CENTERS: Record<Campus, { lat: number; lng: number }> = {
   [Campus.GULOU]: { lat: 32.0575, lng: 118.7750 },
   [Campus.XIANLIN]: { lat: 32.1170, lng: 118.9500 },
+  [Campus.SUZHOU]: { lat: 31.3230, lng: 120.5230 },
 };
 
 // ── 用户角色 ──

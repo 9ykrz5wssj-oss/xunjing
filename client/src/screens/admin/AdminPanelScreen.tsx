@@ -38,14 +38,14 @@ export function AdminPanelScreen({ navigation }: any) {
   const [chestRequiredPlayers, setChestRequiredPlayers] = useState(3);
   const [chestCreating, setChestCreating] = useState(false);
   const [activeChests, setActiveChests] = useState<any[]>([]);
-  const [chestConfig, setChestConfig] = useState<any>({ gulou: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 } });
+  const [chestConfig, setChestConfig] = useState<any>({ gulou: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 }, xianlin: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 }, suzhou: { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 } });
   const [dropConfig, setDropConfig] = useState<any>({ normal: {}, advanced: {} });
   const [giftUserId, setGiftUserId] = useState("");
   const [giftItemId, setGiftItemId] = useState("");
   const [giftItemName, setGiftItemName] = useState("");
   const [showGiftPicker, setShowGiftPicker] = useState(false);
   const [gifting, setGifting] = useState(false);
-  const [campusBounds, setCampusBounds] = useState<any>({ gulou: {}, xianlin: {} });
+  const [campusBounds, setCampusBounds] = useState<any>({ gulou: {}, xianlin: {}, suzhou: {} });
   const [savingBounds, setSavingBounds] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -118,7 +118,7 @@ export function AdminPanelScreen({ navigation }: any) {
       if (tRes.success && tRes.data) setTypes(tRes.data);
       if (chestRes && (chestRes as any).success) setActiveChests((chestRes as any).data || []);
       if (cRes && (cRes as any).success) {
-        const b: any = { gulou: {}, xianlin: {} };
+        const b: any = { gulou: {}, xianlin: {}, suzhou: {} };
         ((cRes as any).data || []).forEach((c: any) => { b[c.campus] = c; });
         setCampusBounds(b);
       }
@@ -352,6 +352,9 @@ export function AdminPanelScreen({ navigation }: any) {
             <TouchableOpacity style={[styles.campusCard, chestCampus === "xianlin" && styles.campusCardActive]} onPress={() => setChestCampus("xianlin")}>
               <Text style={styles.campusCardText}>🏢 仙林</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.campusCard, chestCampus === "suzhou" && styles.campusCardActive]} onPress={() => setChestCampus("suzhou")}>
+              <Text style={styles.campusCardText}>🏛️ 苏州</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.formLabel}>宝箱位置</Text>
@@ -406,8 +409,8 @@ export function AdminPanelScreen({ navigation }: any) {
           <View style={{ marginTop: spacing.xl, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg }}>
             <Text style={styles.chestTitle}>⚙️ 自动刷新设置</Text>
             <Text style={{ ...typography.caption, color: colors.textHint, marginBottom: spacing.md }}>每5分钟检查，宝箱不足时自动补充</Text>
-            {["gulou", "xianlin"].map((c) => {
-              const label = c === "gulou" ? "🏫 鼓楼" : "🏢 仙林";
+            {["gulou", "xianlin", "suzhou"].map((c) => {
+              const label = c === "gulou" ? "🏫 鼓楼" : c === "xianlin" ? "🏢 仙林" : "🏛️ 苏州";
               const cfg = chestConfig[c] || { maxNormalChests: 3, advancedChance: 0.2 };
               return (
                 <View key={c} style={styles.boundsCard}>
@@ -435,7 +438,7 @@ export function AdminPanelScreen({ navigation }: any) {
             })}
             <TouchableOpacity style={[styles.createChestBtn, { backgroundColor: colors.info, marginTop: spacing.sm }]} onPress={async () => {
               try {
-                for (const c of ["gulou", "xianlin"]) {
+                for (const c of ["gulou", "xianlin", "suzhou"]) {
                   const cfg = chestConfig[c] || { maxNormalChests: 3, advancedChance: 0.2, normalCooldownHours: 1, advancedCooldownHours: 1 };
                   await api.put("/admin/chest-config", { campus: c, maxNormalChests: cfg.maxNormalChests ?? 3, advancedChance: cfg.advancedChance ?? 0.2, normalCooldownHours: cfg.normalCooldownHours ?? 1, advancedCooldownHours: cfg.advancedCooldownHours ?? 1 });
                 }
@@ -571,12 +574,12 @@ export function AdminPanelScreen({ navigation }: any) {
           {activeChests.length > 0 && (
             <View style={{ marginTop: spacing.xl }}>
               <Text style={{ ...typography.bodyBold, color: colors.textPrimary, marginBottom: spacing.sm }}>活跃宝箱 ({activeChests.length})</Text>
-              {(["gulou", "xianlin"] as const).map((campus) => {
+              {(["gulou", "xianlin", "suzhou"] as const).map((campus) => {
                 const campusChests = activeChests.filter((c: any) => c.campus === campus);
                 if (campusChests.length === 0) return null;
                 return (
                   <View key={campus} style={{ marginBottom: spacing.md }}>
-                    <Text style={{ ...typography.caption, fontWeight: "800", color: colors.primary, marginBottom: spacing.xs }}>{campus === "gulou" ? "🏫 鼓楼校区" : "🏢 仙林校区"} ({campusChests.length})</Text>
+                    <Text style={{ ...typography.caption, fontWeight: "800", color: colors.primary, marginBottom: spacing.xs }}>{campus === "gulou" ? "🏫 鼓楼校区" : campus === "xianlin" ? "🏢 仙林校区" : "🏛️ 苏州校区"} ({campusChests.length})</Text>
                     {campusChests.map((c: any, idx: number) => (
                       <View key={c._id} style={styles.chestListItem}>
                         <Text style={{ fontSize: 20 }}>{c.type === "advanced" ? "💎" : "📦"}</Text>
@@ -603,9 +606,9 @@ export function AdminPanelScreen({ navigation }: any) {
             在地图上点击选择西南角和东北角，构成一个矩形区域作为宝箱刷新范围。
           </Text>
 
-          {["gulou", "xianlin"].map((c) => {
+          {["gulou", "xianlin", "suzhou"].map((c) => {
             const b = campusBounds[c] || {};
-            const label = c === "gulou" ? "🏫 鼓楼校区" : "🏢 仙林校区";
+            const label = c === "gulou" ? "🏫 鼓楼校区" : c === "xianlin" ? "🏢 仙林校区" : "🏛️ 苏州校区";
             const hasSW = b.minLat != null && b.minLng != null;
             const hasNE = b.maxLat != null && b.maxLng != null;
             return (
@@ -640,7 +643,7 @@ export function AdminPanelScreen({ navigation }: any) {
           <TouchableOpacity style={[styles.createChestBtn, savingBounds && styles.createChestBtnDisabled]} onPress={async () => {
             setSavingBounds(true);
             try {
-              for (const c of ["gulou", "xianlin"]) {
+              for (const c of ["gulou", "xianlin", "suzhou"]) {
                 const b = campusBounds[c] || {};
                 const payload = {
                   campus: c,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View, Text, StyleSheet, FlatList, TextInput,
   TouchableOpacity, Platform, Keyboard, Alert, Dimensions,
@@ -27,6 +27,13 @@ export function ChatScreen({ route, navigation }: any) {
   const EMOJIS = ["😊","😂","❤️","👍","🎉","🔥","😍","🤔","👋","💪","🙏","✨","🌟","💯","🥳"];
   const flatListRef = useRef<FlatList>(null);
   const socketRef = useRef(getCurrentSocket());
+  const nearBottomRef = useRef(true);
+
+  // 当前会话ID，用于过滤socket消息防止串线
+  const currentConvId = useMemo(
+    () => [user?.id || user?._id || "", friend.id].sort().join("_"),
+    [user?.id, user?._id, friend.id]
+  );
 
   // 加载历史消息
   useEffect(() => {
@@ -46,7 +53,7 @@ export function ChatScreen({ route, navigation }: any) {
       socketRef.current = socket;
 
       const handleNewMessage = (data: any) => {
-        if (data.conversationId && data.message.senderId !== (user?.id || user?._id)) {
+        if (data.conversationId === currentConvId && data.message.senderId !== (user?.id || user?._id)) {
           setMessages((prev) => [...prev, data.message]);
           setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
         }
@@ -54,6 +61,7 @@ export function ChatScreen({ route, navigation }: any) {
 
       const handleMessageRevoked = (data: any) => {
         if (!data?.messageId) return;
+        if (data.conversationId && data.conversationId !== currentConvId) return;
         setMessages((prev) => prev.map((m) =>
           m._id === data.messageId ? { ...m, isRevoked: true } : m
         ));
@@ -61,6 +69,7 @@ export function ChatScreen({ route, navigation }: any) {
 
       const handleMessageDeleted = (data: any) => {
         if (!data?.messageId) return;
+        if (data.conversationId && data.conversationId !== currentConvId) return;
         setMessages((prev) => prev.filter((m) => m._id !== data.messageId));
       };
 
@@ -74,7 +83,7 @@ export function ChatScreen({ route, navigation }: any) {
       };
     };
     setupSocket();
-  }, []);
+  }, [currentConvId]);
 
   // 键盘避让：监听键盘高度，将输入框顶到键盘正上方
   useEffect(() => {
@@ -195,7 +204,7 @@ export function ChatScreen({ route, navigation }: any) {
     markRead();
   }, [messages.length]);
 
-  const renderMessage = ({ item, index }: { item: MessageData; index: number }) => {
+  const renderMessage = useCallback(({ item, index }: { item: MessageData; index: number }) => {
     const isMine = String(item.senderId) === String(user?.id || user?._id || "");
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showAvatar = !prevMsg || prevMsg.senderId !== item.senderId;
@@ -273,7 +282,7 @@ export function ChatScreen({ route, navigation }: any) {
         </View>
       </View>
     );
-  };
+  }, [menuIndex, user?.id, user?._id, messages]);
 
   return (
     <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
@@ -292,19 +301,24 @@ export function ChatScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* 消息列表（点击空白处关闭菜单） */}
-      <TouchableOpacity
-        style={{ flex: 1 }}
-        activeOpacity={1}
-        onPress={menuIndex != null || contextMenu != null ? () => { setMenuIndex(null); setContextMenu(null); } : undefined}
-      >
+      {/* 消息列表 */}
+      <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item, index) => `${item.senderId}-${index}-${item.createdAt}`}
+          keyExtractor={(item) => item._id || `${item.senderId}-${item.createdAt}`}
           renderItem={renderMessage}
+          removeClippedSubviews={Platform.OS === "android"}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          initialNumToRender={20}
           contentContainerStyle={[styles.msgList, messages.length === 0 && styles.msgListEmpty]}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() => { if (nearBottomRef.current) { flatListRef.current?.scrollToEnd({ animated: false }); } }}
+          onScroll={(e: any) => {
+            const { contentSize, contentOffset, layoutMeasurement } = e.nativeEvent;
+            const dist = contentSize.height - contentOffset.y - layoutMeasurement.height;
+            nearBottomRef.current = dist < 200;
+          }}
           onScrollBeginDrag={() => { setMenuIndex(null); setContextMenu(null); }}
           scrollEventThrottle={16}
           ListEmptyComponent={
@@ -314,7 +328,7 @@ export function ChatScreen({ route, navigation }: any) {
             </View>
           }
         />
-      </TouchableOpacity>
+      </View>
 
       {/* 输入栏 */}
       <View style={styles.inputBar}>

@@ -1,5 +1,5 @@
 import { isInCampus, identifyCampus } from "../utils/campus";
-import { Campus } from "../config/constants";
+import { Campus, CAMPUS_NAMES } from "../config/constants";
 
 export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -15,7 +15,7 @@ export async function validateGeofence(lat: number, lng: number, claimedCampus: 
     return { valid: false, actualCampus: null, message: "您已离开校区范围，无法进行宝箱相关操作" };
   }
   if (actualCampus !== claimedCampus) {
-    return { valid: false, actualCampus, message: `您实际位于${actualCampus === Campus.GULOU ? "鼓楼校区" : "仙林校区"}` };
+    return { valid: false, actualCampus, message: `您实际位于${CAMPUS_NAMES[actualCampus] || "未知校区"}` };
   }
   return { valid: true, actualCampus };
 }
