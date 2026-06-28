@@ -10,3 +10,6 @@ uploads/
 *.log
 .DS_Store
 Thumbs.db
+temp_pass.txt
+copy-key.js
+*.pem
